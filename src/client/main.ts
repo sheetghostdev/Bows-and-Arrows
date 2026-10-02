@@ -7,6 +7,9 @@ import { OnlineSession, newRoomCode, roomFromPath } from './online';
 import { prefs } from './prefs';
 import { el, hideBanner, Hud, iconButton, ICONS, modePicker, roundBanner, scoreLine, showOverlay, windPicker } from './ui';
 
+/** Offline build (no game server): vs bot and same screen only. See scripts/build-offline.mjs. */
+const OFFLINE = import.meta.env.VITE_OFFLINE === '1';
+
 const view = new GameView(document.getElementById('game') as HTMLCanvasElement);
 const hud = new Hud();
 
@@ -50,7 +53,7 @@ function backdropState(): MatchState {
 
 function goHome() {
   stopEverything();
-  if (location.pathname !== '/') history.pushState(null, '', '/');
+  if (!OFFLINE && location.pathname !== '/') history.pushState(null, '', '/');
   view.interactive = false;
   view.hooks = {};
   view.reset(backdropState());
@@ -62,13 +65,20 @@ function goHome() {
     { class: 'panel' },
     el('h1', { class: 'title' }, 'Bows & Arrows'),
     el('p', { class: 'sub' }, 'Drag. Release. Headshot.'),
-    el('button', { class: 'btn accent big', onclick: () => playFriend() }, 'Play a friend'),
-    el(
-      'div',
-      { class: 'row' },
-      el('button', { class: 'btn', onclick: () => playLocal(true) }, 'Vs bot'),
-      el('button', { class: 'btn', onclick: () => playLocal(false) }, 'Same screen'),
-    ),
+    ...(OFFLINE
+      ? [
+          el('button', { class: 'btn accent big', onclick: () => playLocal(true) }, 'Vs bot'),
+          el('button', { class: 'btn', onclick: () => playLocal(false) }, 'Same screen'),
+        ]
+      : [
+          el('button', { class: 'btn accent big', onclick: () => playFriend() }, 'Play a friend'),
+          el(
+            'div',
+            { class: 'row' },
+            el('button', { class: 'btn', onclick: () => playLocal(true) }, 'Vs bot'),
+            el('button', { class: 'btn', onclick: () => playLocal(false) }, 'Same screen'),
+          ),
+        ]),
     modePicker(prefs.modeId, (m) => (prefs.modeId = m)),
     windPicker(prefs.windOn, (on) => (prefs.windOn = on)),
   );
@@ -158,7 +168,7 @@ function joinRoom(code: string, creating: boolean) {
 }
 
 function route() {
-  const code = roomFromPath(location.pathname);
+  const code = OFFLINE ? null : roomFromPath(location.pathname);
   if (code) joinRoom(code, false);
   else goHome();
 }

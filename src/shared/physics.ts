@@ -18,7 +18,27 @@ export interface Launch {
   wind: number;
 }
 
-export type ImpactKind = 'ground' | 'archer' | 'apple' | 'none';
+export type ImpactKind = 'ground' | 'wall' | 'archer' | 'apple' | 'none';
+
+/** A solid block in the field (stone wall, or a house with a pitched roof). Arrows stick into it. */
+export interface Obstacle {
+  kind: 'wall' | 'house';
+  /** Centre x, width, the y of its base, wall height above the base, and roof peak height above that (0 = flat). */
+  x: number;
+  w: number;
+  base: number;
+  h: number;
+  roof: number;
+}
+
+/** Is (px, py) inside the obstacle? Plain arithmetic, like the rest of the sim. */
+export function insideObstacle(o: Obstacle, px: number, py: number): boolean {
+  const half = o.w / 2;
+  const dx = px - o.x;
+  if (dx < -half || dx > half || py < o.base) return false;
+  const adx = dx < 0 ? -dx : dx;
+  return py <= o.base + o.h + o.roof * (1 - adx / half);
+}
 
 export interface Impact {
   kind: ImpactKind;
@@ -79,7 +99,7 @@ export function launchVelocity(input: ShotInput, facing: 1 | -1): { vx: number; 
  * Collision is tested at `substeps` points along each step so fast arrows can't skip a head.
  * Pierce targets (balloons) are popped and the arrow keeps going.
  */
-export function simulate(launch: Launch, terrain: Terrain, targets: Hitbox[]): Flight {
+export function simulate(launch: Launch, terrain: Terrain, targets: Hitbox[], obstacles: Obstacle[] = []): Flight {
   const hitIds = new Map<number, Pop>();
   const { dt, substeps, gravity, maxFlightSeconds } = CONFIG.physics;
   const maxSteps = Math.ceil(maxFlightSeconds / dt);
@@ -123,6 +143,12 @@ export function simulate(launch: Launch, terrain: Terrain, targets: Hitbox[]): F
         if (h.owner >= 0 && d < nearest.dist) {
           nearest.dist = d;
           nearest.step = step;
+        }
+      }
+      for (const o of obstacles) {
+        if (insideObstacle(o, px, py)) {
+          path.push(px, py);
+          return { path, pops, nearest, impact: { kind: 'wall', owner: null, zone: null, x: px, y: py, vx, vy, step } };
         }
       }
       if (py <= groundY(terrain, px)) {

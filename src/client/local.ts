@@ -1,7 +1,7 @@
 import { botShot } from '../shared/bot';
 import { CONFIG } from '../shared/config';
 import { applyShot, createMatch, nextRound, rematch, type MatchState, type PlayerInfo } from '../shared/match';
-import type { ModeId } from '../shared/modes';
+import type { ModeId, WallsSetting } from '../shared/modes';
 import type { ShotInput } from '../shared/physics';
 import { randomSeed } from '../shared/rng';
 import type { Driver, GameView } from './game';
@@ -15,10 +15,10 @@ export class LocalDriver implements Driver {
 
   constructor(
     private view: GameView,
-    opts: { modeId: ModeId; windOn: boolean; players: PlayerInfo[]; bot: number | null },
+    opts: { modeId: ModeId; windOn: boolean; walls: WallsSetting; players: PlayerInfo[]; bot: number | null },
   ) {
     this.bot = opts.bot;
-    this.state = createMatch({ seed: randomSeed(), modeId: opts.modeId, windOn: opts.windOn, players: opts.players });
+    this.state = createMatch({ seed: randomSeed(), modeId: opts.modeId, windOn: opts.windOn, walls: opts.walls, players: opts.players });
   }
 
   start() {

@@ -1,7 +1,7 @@
 import { facingOf } from '../shared/body';
 import { CONFIG, PALETTE } from '../shared/config';
 import { modeOf, type MatchState } from '../shared/match';
-import { MODE_LIST, MODES, type ModeId } from '../shared/modes';
+import { MODE_LIST, MODES, type ModeId, type WallsSetting } from '../shared/modes';
 import { sfx } from './audio';
 
 type Child = Node | string | null | undefined | false;
@@ -157,6 +157,20 @@ export function modePicker(value: ModeId, onChange: (m: ModeId) => void, disable
   );
   seg.classList.add('modes');
   return el('div', { class: 'mode-picker' }, seg, blurb);
+}
+
+export const WALLS_LABEL: Record<WallsSetting, string> = { off: 'Open field', some: 'Some walls', always: 'Walls' };
+
+/** Map setting (Duel and Apple Shot only; hidden for modes without obstacles). */
+export function wallsPicker(value: WallsSetting, modeId: ModeId, onChange: (w: WallsSetting) => void, disabled = false) {
+  const root = segmented(
+    (['off', 'some', 'always'] as WallsSetting[]).map((w) => ({ value: w, label: WALLS_LABEL[w] })),
+    value,
+    onChange,
+    disabled,
+  );
+  root.hidden = !MODES[modeId].obstacles;
+  return root;
 }
 
 export function windPicker(value: boolean, onChange: (on: boolean) => void, disabled = false) {

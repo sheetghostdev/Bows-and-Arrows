@@ -5,7 +5,8 @@ import { GameView } from './game';
 import { LocalDriver } from './local';
 import { OnlineSession, newRoomCode, roomFromPath } from './online';
 import { prefs } from './prefs';
-import { el, hideBanner, Hud, iconButton, ICONS, modePicker, roundBanner, scoreLine, showOverlay, windPicker } from './ui';
+import { MODES } from '../shared/modes';
+import { el, hideBanner, Hud, iconButton, ICONS, modePicker, roundBanner, scoreLine, showOverlay, wallsPicker, windPicker } from './ui';
 
 /** Offline build (no game server): vs bot and same screen only. See scripts/build-offline.mjs. */
 const OFFLINE = import.meta.env.VITE_OFFLINE === '1';
@@ -77,6 +78,7 @@ function goHome() {
   hud.show(false);
   corner.hidden = true;
 
+  const walls = wallsPicker(prefs.walls, prefs.modeId, (w) => (prefs.walls = w));
   const panel = el(
     'div',
     { class: 'panel' },
@@ -96,7 +98,11 @@ function goHome() {
             el('button', { class: 'btn', onclick: () => playLocal(false) }, 'Same screen'),
           ),
         ]),
-    modePicker(prefs.modeId, (m) => (prefs.modeId = m)),
+    modePicker(prefs.modeId, (m) => {
+      prefs.modeId = m;
+      walls.hidden = !MODES[m].obstacles;
+    }),
+    walls,
     windPicker(prefs.windOn, (on) => (prefs.windOn = on)),
   );
   showOverlay(panel);
@@ -114,7 +120,7 @@ function playLocal(vsBot: boolean) {
         { name: 'Red', color: PALETTE[0] },
         { name: 'Blue', color: PALETTE[1] },
       ];
-  local = new LocalDriver(view, { modeId: prefs.modeId, windOn: prefs.windOn, players, bot: vsBot ? 1 : null });
+  local = new LocalDriver(view, { modeId: prefs.modeId, windOn: prefs.windOn, walls: prefs.walls, players, bot: vsBot ? 1 : null });
   const driver = local;
   view.hooks = {
     shown: (s) => hud.update(s),

@@ -1,7 +1,7 @@
 import { CONFIG } from './config';
 import { archerHitboxes, BODY, facingOf, type Hitbox, type Zone } from './body';
-import { MODES, type ModeDef, type ModeId } from './modes';
-import { clampInput, launchVelocity, simulate, type Flight, type Launch, type ShotInput } from './physics';
+import { MODES, type ModeDef, type ModeId, type WallsSetting } from './modes';
+import { clampInput, launchVelocity, simulate, type Flight, type Launch, type Obstacle, type ShotInput } from './physics';
 import { mix, mulberry32 } from './rng';
 import { groundY, makeTerrain, type Terrain } from './terrain';
 
@@ -68,6 +68,8 @@ export interface LastEvent {
 export interface MatchState {
   modeId: ModeId;
   windOn: boolean;
+  /** Map setting for walls/houses (used by modes that allow obstacles). */
+  walls: WallsSetting;
   seed: number;
   players: PlayerInfo[];
   /** Who shot first in round 0; rounds alternate from there. */
@@ -89,6 +91,8 @@ export interface MatchState {
   windLevel: number;
 
   arrows: StuckArrow[];
+  /** Walls/houses in the field this round. */
+  obstacles: Obstacle[];
   /** Targets on the field this round (Balloons, Ladder, Moving Target). */
   targets: Target[];
   /** Each player's previous shot this round (for the ghost trail). */
@@ -120,6 +124,7 @@ export interface NewMatch {
   seed: number;
   modeId: ModeId;
   windOn: boolean;
+  walls?: WallsSetting;
   players: PlayerInfo[];
   firstPlayer?: number;
 }
@@ -128,6 +133,7 @@ export function createMatch(o: NewMatch): MatchState {
   const s: MatchState = {
     modeId: o.modeId,
     windOn: o.windOn,
+    walls: o.walls ?? 'off',
     seed: o.seed >>> 0,
     players: o.players.map((p) => ({ ...p })),
     matchFirst: o.firstPlayer ?? 0,
@@ -142,6 +148,7 @@ export function createMatch(o: NewMatch): MatchState {
     turn: 0,
     windLevel: 0,
     arrows: [],
+    obstacles: [],
     targets: [],
     lastShot: [null, null],
     phase: 'aim',
@@ -164,6 +171,7 @@ function setupRound(s: MatchState): void {
   s.points = [0, 0];
   s.shots = [0, 0];
   s.arrows = [];
+  s.obstacles = makeObstacles(s);
   s.targets = makeTargets(s, rng);
   s.lastShot = [null, null];
   s.shotInRound = 0;
@@ -176,6 +184,29 @@ function setupRound(s: MatchState): void {
 }
 
 const q2 = (v: number) => Math.round(v * 100) / 100;
+
+/**
+ * Obstacles sit dead centre and are symmetric, so they're exactly as much in the
+ * way for both archers. Height is capped by distance (see CONFIG.walls) so a lob
+ * over the top can always reach the far archer; tests/fairness.test.ts checks it.
+ */
+function makeObstacles(s: MatchState): Obstacle[] {
+  const c = CONFIG.walls;
+  if (!modeOf(s).obstacles || s.walls === 'off') return [];
+  const r = mulberry32(mix(s.seed, s.round, 0xb10));
+  if (s.walls === 'some' && r() >= c.someChance) return [];
+  const between = (a: number, b: number) => q2(a + r() * (b - a));
+  const cap = Math.min(c.maxHeight, c.maxHeightBase + c.maxHeightPerMetre * s.distance);
+  const x = q2(s.distance / 2);
+  const house = r() < 0.5;
+  const w = house ? between(c.houseWidth[0], c.houseWidth[1]) : c.wallWidth;
+  // Sink the base a little below the lowest ground under it so it never floats.
+  const base = q2(Math.min(groundY(s.terrain, x - w / 2), groundY(s.terrain, x), groundY(s.terrain, x + w / 2)) - 0.2);
+  if (!house) return [{ kind: 'wall', x, w, base, h: between(Math.min(c.minWallHeight, cap), cap) + 0.2, roof: 0 }];
+  const h = between(c.houseHeight[0], c.houseHeight[1]);
+  const roof = Math.min(between(c.roofHeight[0], c.roofHeight[1]), Math.max(0.4, cap - h));
+  return [{ kind: 'house', x, w, base, h: h + 0.2, roof: q2(roof) }];
+}
 
 function makeTargets(s: MatchState, rng: () => number): Target[] {
   switch (modeOf(s).targets) {
@@ -292,7 +323,7 @@ export function targetsFor(s: MatchState, shooter: number, phase = 0): Hitbox[] 
 }
 
 export function flightFor(s: MatchState, shooter: number, vx: number, vy: number, wind: number, phase = 0): Flight {
-  return simulate(launchFor(s, shooter, vx, vy, wind), s.terrain, targetsFor(s, shooter, phase));
+  return simulate(launchFor(s, shooter, vx, vy, wind), s.terrain, targetsFor(s, shooter, phase), s.obstacles);
 }
 
 /** Length of one full back-and-forth of the moving target (phases wrap at this). */
@@ -337,7 +368,7 @@ export function applyShot(prev: MatchState, input: ShotInput): { state: MatchSta
     event.points += pts;
   }
 
-  if (imp.kind === 'ground') {
+  if (imp.kind === 'ground' || imp.kind === 'wall') {
     s.arrows.push({ shooter, owner: null, x: imp.x, y: imp.y, angle: Math.atan2(imp.vy, imp.vx) });
   } else if (imp.kind === 'archer' || imp.kind === 'apple') {
     const owner = imp.owner!;
@@ -440,5 +471,5 @@ export function forfeit(prev: MatchState, loser: number): MatchState {
 
 /** Same players, same mode, fresh seed; the other player shoots first. */
 export function rematch(prev: MatchState, seed: number, players = prev.players): MatchState {
-  return createMatch({ seed, modeId: prev.modeId, windOn: prev.windOn, players, firstPlayer: 1 - prev.matchFirst });
+  return createMatch({ seed, modeId: prev.modeId, windOn: prev.windOn, walls: prev.walls, players, firstPlayer: 1 - prev.matchFirst });
 }

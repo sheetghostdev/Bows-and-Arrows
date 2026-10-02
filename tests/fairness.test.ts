@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../src/shared/config';
 import { aimPoint, solvePower } from '../src/shared/bot';
 import { applyShot, createMatch, type MatchState } from '../src/shared/match';
+import type { Obstacle } from '../src/shared/physics';
 
 /** Build a match at an exact distance and wind level for `shooter`. */
 function arena(distance: number, windLevel: number, shooter: number, modeId: 'duel' | 'apple' = 'duel'): MatchState {
@@ -15,7 +16,7 @@ function arena(distance: number, windLevel: number, shooter: number, modeId: 'du
 /** Search angles; for each, solve for power and confirm the real sim scores a hit in `zone`. */
 function canHit(s: MatchState, shooter: number, zone: 'head' | 'apple'): boolean {
   const t = aimPoint(s, shooter);
-  for (let angle = 5; angle <= 80; angle += 2.5) {
+  for (let angle = 5; angle <= 87.5; angle += 2.5) {
     const power = solvePower(s, shooter, angle, t.x, t.y);
     if (power === null) continue;
     const { state } = applyShot(s, { angle, power });
@@ -35,6 +36,26 @@ describe('wind fairness and reachability', () => {
     for (const level of [-L, 0, L]) {
       it(`player ${shooter} can headshot at every distance with wind level ${level}`, () => {
         const failures = distances.filter((d) => !canHit(arena(d, level, shooter), shooter, 'head'));
+        expect(failures).toEqual([]);
+      });
+    }
+  }
+
+  // The tallest wall and the tallest house the generator can make, at every distance.
+  const W = CONFIG.walls;
+  const cap = (d: number) => Math.min(W.maxHeight, W.maxHeightBase + W.maxHeightPerMetre * d);
+  const blockers: Record<string, (d: number) => Obstacle> = {
+    wall: (d) => ({ kind: 'wall', x: d / 2, w: W.wallWidth, base: -0.2, h: cap(d) + 0.2, roof: 0 }),
+    house: (d) => ({ kind: 'house', x: d / 2, w: W.houseWidth[1], base: -0.2, h: W.houseHeight[1] + 0.2, roof: Math.max(0.4, cap(d) - W.houseHeight[1]) }),
+  };
+  for (const [name, make] of Object.entries(blockers)) {
+    for (const level of [-L, L]) {
+      it(`a headshot is possible over the tallest ${name} at every distance (wind ${level})`, () => {
+        const failures = distances.filter((d) => {
+          const s = arena(d, level, 0);
+          s.obstacles = [make(d)];
+          return !canHit(s, 0, 'head');
+        });
         expect(failures).toEqual([]);
       });
     }

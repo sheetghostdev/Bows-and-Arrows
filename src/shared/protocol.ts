@@ -1,6 +1,6 @@
 import { PALETTE } from './config';
 import type { MatchState, ShotRecord } from './match';
-import type { ModeId } from './modes';
+import type { ModeId, WallsSetting } from './modes';
 
 export interface SeatView {
   name: string;
@@ -13,7 +13,7 @@ export interface SeatView {
 export interface RoomView {
   code: string;
   seats: (SeatView | null)[];
-  settings: { modeId: ModeId; windOn: boolean };
+  settings: RoomSettings;
   match: MatchState | null;
   /** Server epoch ms when the current turn times out (null = no timer running). */
   turnDeadline: number | null;
@@ -23,9 +23,15 @@ export interface RoomView {
   tally: number[];
 }
 
+export interface RoomSettings {
+  modeId: ModeId;
+  windOn: boolean;
+  walls: WallsSetting;
+}
+
 export type ClientMsg =
   | { t: 'hello'; token: string; name: string; color: string }
-  | { t: 'settings'; modeId: ModeId; windOn: boolean }
+  | ({ t: 'settings' } & RoomSettings)
   | { t: 'start' }
   | { t: 'shoot'; angle: number; power: number; phase?: number; seq: number }
   | { t: 'aim'; angle: number; power: number }

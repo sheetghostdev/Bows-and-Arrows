@@ -78,15 +78,15 @@ afterEach(() => {
   open.splice(0).forEach((c) => c.close());
 });
 
-async function lobby(modeId: 'duel' | 'apple' = 'duel') {
+async function lobby(modeId: 'duel' | 'apple' = 'duel', walls: 'off' | 'some' | 'always' = 'off') {
   const room = code();
   const a = new Client(room, 'token-alice-1', 'Alice', '#e4572e');
   await a.until((c) => !!c.room);
   const b = new Client(room, 'token-bob-123', 'Bob', '#e4572e'); // same color on purpose
   await a.until((c) => !!c.room?.seats[1]?.connected);
   await b.until((c) => !!c.room);
-  a.send({ t: 'settings', modeId, windOn: true });
-  await b.until((c) => c.room?.settings.modeId === modeId);
+  a.send({ t: 'settings', modeId, windOn: true, walls });
+  await b.until((c) => c.room?.settings.modeId === modeId && c.room?.settings.walls === walls);
   return { room, a, b };
 }
 
@@ -119,6 +119,9 @@ describe('online rooms', () => {
         continue;
       }
       const shooter = players[m.turn];
+      // Both clients must be looking at the same turn before anyone shoots
+      // (a shot from a stale view is correctly rejected by the server).
+      for (const p of players) await p.until((c) => c.room!.match!.seq === m.seq);
       // Out-of-turn shots are ignored.
       players[1 - m.turn].send({ t: 'shoot', angle: 45, power: 0.5, seq: m.seq });
       shooter.perfectShot();
@@ -139,6 +142,14 @@ describe('online rooms', () => {
     b.send({ t: 'rematch' });
     await a.until((c) => c.room!.match!.phase === 'aim' && c.room!.match!.seed !== end.seed);
     expect(a.room!.match!.turn).toBe(1); // the other player opens the rematch
+  });
+
+  it('the host\'s walls setting reaches the match', async () => {
+    const { a, b } = await lobby('duel', 'always');
+    a.send({ t: 'start' });
+    await started(a, b);
+    expect(a.room!.match!.walls).toBe('always');
+    expect(b.room!.match!.obstacles.length).toBe(1);
   });
 
   it('apple shot runs through the same server', async () => {

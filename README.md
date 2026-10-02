@@ -17,6 +17,8 @@ Games:
 - **Ladder**: each player has their own target (ringed in their color). Hit it and it moves further out: 7, 11, 15, 19 m. First to clear all four wins. You can see their target but can't hit it.
 - **Moving Target**: a bullseye sweeps back and forth over midfield; time your release and lead the shot. Bullseye 3, middle ring 2, outer ring 1; first to 8. Both shots of a pair face the same height, sweep and speed.
 
+**Walls** (Duel and Apple Shot): a map setting with three options, Open field, Some walls (about half the rounds), or Walls (every round). A stone wall or a little house stands dead centre, so it's equally in the way for both archers, and arrows stick into it. Height scales with distance; `tests/fairness.test.ts` checks a headshot is still possible over the tallest wall and house at every distance in full head- and tailwind. The bot lobs over.
+
 In every points mode both players get the same number of arrows: the win is checked after each pair of shots, and a tie keeps going.
 
 **Knockouts** turn the archer into a ragdoll (Verlet points and sticks, client-side only) that the arrow knocks over, with stuck arrows riding along.

@@ -1,5 +1,5 @@
 import { PALETTE } from '../shared/config';
-import { isModeId, type ModeId } from '../shared/modes';
+import { isModeId, isWallsSetting, type ModeId, type WallsSetting } from '../shared/modes';
 
 /** Remembered choices. Storage can be unavailable (private mode), so every access is guarded. */
 function get(key: string): string | null {
@@ -53,6 +53,13 @@ export const prefs = {
   },
   set windOn(v: boolean) {
     set('wind', v ? '1' : '0');
+  },
+  get walls(): WallsSetting {
+    const w = get('walls');
+    return isWallsSetting(w) ? w : 'some';
+  },
+  set walls(v: WallsSetting) {
+    set('walls', v);
   },
   /** Per-room secret that lets you reconnect to your seat. */
   token(room: string): string {

@@ -28,6 +28,8 @@ export interface ModeDef {
   usesHp: boolean;
   /** Can arrows hit the other archer at all? (false = they fly through) */
   hitArchers: boolean;
+  /** Can this mode have walls/houses in the middle of the field? */
+  obstacles: boolean;
   /** Targets on the field, or null for none. */
   targets: TargetSet | null;
   /** Ring scoring for targets: points by ring, bullseye first. Without it a target hit uses zones.target. */
@@ -54,6 +56,7 @@ export const MODES: Record<ModeId, ModeDef> = {
     apple: false,
     usesHp: true,
     hitArchers: true,
+    obstacles: true,
     targets: null,
     zones: {
       head: { damage: 'kill' },
@@ -71,6 +74,7 @@ export const MODES: Record<ModeId, ModeDef> = {
     apple: true,
     usesHp: false,
     hitArchers: true,
+    obstacles: true,
     targets: null,
     zones: {
       apple: { points: CONFIG.apple.applePoints },
@@ -89,6 +93,7 @@ export const MODES: Record<ModeId, ModeDef> = {
     apple: false,
     usesHp: false,
     hitArchers: false,
+    obstacles: false,
     targets: 'balloons',
     zones: { target: { points: 1 } },
     roundsToWin: 1,
@@ -103,6 +108,7 @@ export const MODES: Record<ModeId, ModeDef> = {
     apple: false,
     usesHp: false,
     hitArchers: false,
+    obstacles: false,
     targets: 'ladder',
     zones: { target: { points: 1 } },
     roundsToWin: 1,
@@ -118,6 +124,7 @@ export const MODES: Record<ModeId, ModeDef> = {
     apple: false,
     usesHp: false,
     hitArchers: false,
+    obstacles: false,
     targets: 'mover',
     zones: { target: { points: 1 } },
     rings: CONFIG.mover.rings,
@@ -128,6 +135,13 @@ export const MODES: Record<ModeId, ModeDef> = {
     score: 'points',
   },
 };
+
+/** Map setting: no obstacles, an obstacle in about half the rounds, or every round. */
+export type WallsSetting = 'off' | 'some' | 'always';
+export const WALLS_SETTINGS: WallsSetting[] = ['off', 'some', 'always'];
+export function isWallsSetting(v: unknown): v is WallsSetting {
+  return typeof v === 'string' && (WALLS_SETTINGS as string[]).includes(v);
+}
 
 export const MODE_LIST: ModeDef[] = Object.values(MODES);
 

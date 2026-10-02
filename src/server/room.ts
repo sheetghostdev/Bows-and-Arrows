@@ -1,8 +1,8 @@
 import { DurableObject } from 'cloudflare:workers';
 import { CONFIG, PALETTE } from '../shared/config';
 import { applyShot, createMatch, forfeit, nextRound, rematch, skipTurn, type MatchState } from '../shared/match';
-import { isModeId, type ModeId } from '../shared/modes';
-import { cleanColor, cleanName, type ClientMsg, type RoomView, type ServerMsg } from '../shared/protocol';
+import { isModeId, isWallsSetting } from '../shared/modes';
+import { cleanColor, cleanName, type ClientMsg, type RoomSettings, type RoomView, type ServerMsg } from '../shared/protocol';
 import { randomSeed } from '../shared/rng';
 
 export interface Env {
@@ -20,7 +20,7 @@ interface Seat {
 interface Stored {
   code: string;
   seats: (Seat | null)[];
-  settings: { modeId: ModeId; windOn: boolean };
+  settings: RoomSettings;
   match: MatchState | null;
   turnDeadline: number | null;
   nextRoundAt: number | null;
@@ -93,7 +93,7 @@ export class MatchRoom extends DurableObject<Env> {
         return;
       case 'settings':
         if (seat !== 0 || !isModeId(msg.modeId) || (room.match && room.match.phase !== 'matchOver')) return;
-        room.settings = { modeId: msg.modeId, windOn: !!msg.windOn };
+        room.settings = { modeId: msg.modeId, windOn: !!msg.windOn, walls: isWallsSetting(msg.walls) ? msg.walls : 'some' };
         break;
       case 'start':
         if (seat !== 0 || room.match || !this.bothHere()) return;
@@ -110,7 +110,7 @@ export class MatchRoom extends DurableObject<Env> {
         room.seats[seat]!.rematch = true;
         if (room.seats.every((s) => s?.rematch)) {
           const players = room.seats.map((s) => ({ name: s!.name, color: s!.color }));
-          const next = rematch({ ...m, modeId: room.settings.modeId, windOn: room.settings.windOn }, randomSeed(), players);
+          const next = rematch({ ...m, modeId: room.settings.modeId, windOn: room.settings.windOn, walls: room.settings.walls ?? 'some' }, randomSeed(), players);
           this.startMatch(next, now);
         }
         break;
@@ -145,7 +145,7 @@ export class MatchRoom extends DurableObject<Env> {
     const room = (this.room ??= {
       code: att.code,
       seats: [null, null],
-      settings: { modeId: 'duel', windOn: true },
+      settings: { modeId: 'duel', windOn: true, walls: 'some' },
       match: null,
       turnDeadline: null,
       nextRoundAt: null,
@@ -221,6 +221,7 @@ export class MatchRoom extends DurableObject<Env> {
       seed: randomSeed(),
       modeId: r.settings.modeId,
       windOn: r.settings.windOn,
+      walls: r.settings.walls ?? 'some',
       players: r.seats.map((s) => ({ name: s!.name, color: s!.color })),
       firstPlayer: first,
     };

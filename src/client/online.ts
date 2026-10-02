@@ -2,11 +2,11 @@ import { CONFIG } from '../shared/config';
 import { modeOf, type MatchState } from '../shared/match';
 import { MODES } from '../shared/modes';
 import type { ShotInput } from '../shared/physics';
-import { MAX_NAME, ROOM_CODE, type ClientMsg, type RoomView, type ServerMsg } from '../shared/protocol';
+import { MAX_NAME, ROOM_CODE, type ClientMsg, type RoomSettings, type RoomView, type ServerMsg } from '../shared/protocol';
 import { sfx } from './audio';
 import type { Driver, GameView } from './game';
 import { prefs } from './prefs';
-import { banner, colorPicker, el, hideBanner, type Hud, modePicker, roundBanner, scoreLine, showOverlay, windPicker } from './ui';
+import { banner, colorPicker, el, hideBanner, type Hud, modePicker, roundBanner, scoreLine, showOverlay, WALLS_LABEL, wallsPicker, windPicker } from './ui';
 
 const CODE_CHARS = 'abcdefghjkmnpqrstuvwxyz23456789';
 
@@ -366,7 +366,7 @@ export class OnlineSession implements Driver {
     const linkInput = el('input', { value: url, readonly: true, onfocus: () => linkInput.select() });
     const share = 'share' in navigator;
     const settings = r.settings;
-    const sendSettings = (modeId = settings.modeId, windOn = settings.windOn) => this.send({ t: 'settings', modeId, windOn });
+    const sendSettings = (patch: Partial<RoomSettings>) => this.send({ t: 'settings', ...settings, ...patch });
 
     return el(
       'div',
@@ -386,9 +386,16 @@ export class OnlineSession implements Driver {
         : null,
       slots,
       host
-        ? modePicker(settings.modeId, (m) => sendSettings(m, settings.windOn))
-        : el('p', { class: 'sub' }, `${MODES[settings.modeId].name} · ${settings.windOn ? 'wind on' : 'no wind'}`),
-      host ? windPicker(settings.windOn, (on) => sendSettings(settings.modeId, on)) : null,
+        ? modePicker(settings.modeId, (modeId) => sendSettings({ modeId }))
+        : el(
+            'p',
+            { class: 'sub' },
+            [MODES[settings.modeId].name, MODES[settings.modeId].obstacles ? WALLS_LABEL[settings.walls] : null, settings.windOn ? 'wind on' : 'no wind']
+              .filter(Boolean)
+              .join(' · '),
+          ),
+      host ? wallsPicker(settings.walls, settings.modeId, (walls) => sendSettings({ walls })) : null,
+      host ? windPicker(settings.windOn, (windOn) => sendSettings({ windOn })) : null,
       host
         ? el('button', { class: 'btn accent big', disabled: !ready, onclick: () => this.send({ t: 'start' }) }, ready ? 'Start' : 'Waiting for friend…')
         : el('p', { class: 'sub waiting' }, `Waiting for ${r.seats[0]?.name ?? 'host'} to start…`),

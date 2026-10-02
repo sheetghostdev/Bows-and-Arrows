@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { aimPoint, solveLead, solvePower } from '../src/shared/bot';
+import { aimPoint, botShot, solveLead, solvePower } from '../src/shared/bot';
 import { CONFIG } from '../src/shared/config';
-import { applyShot, createMatch, flightFor, nextRound, skipTurn, type MatchState } from '../src/shared/match';
+import { applyShot, createMatch, flightFor, nextRound, rematch, skipTurn, type MatchState } from '../src/shared/match';
 import { BODY } from '../src/shared/body';
 import type { ShotInput } from '../src/shared/physics';
 
@@ -196,5 +196,39 @@ describe('moving target mode', () => {
     expect(JSON.stringify(s.targets)).toBe(t0);
     s = applyShot(s, miss).state;
     expect(JSON.stringify(s.targets)).not.toBe(t0);
+  });
+});
+
+describe('walls', () => {
+  it('"always" puts a centred obstacle in every Duel round; "off" never; other modes never', () => {
+    for (let seed = 1; seed < 40; seed++) {
+      const on = createMatch({ seed, modeId: 'duel', windOn: true, walls: 'always', players });
+      expect(on.obstacles.length).toBe(1);
+      expect(on.obstacles[0].x).toBeCloseTo(on.distance / 2, 1);
+      expect(createMatch({ seed, modeId: 'duel', windOn: true, walls: 'off', players }).obstacles.length).toBe(0);
+      expect(createMatch({ seed, modeId: 'balloons', windOn: true, walls: 'always', players }).obstacles.length).toBe(0);
+    }
+  });
+
+  it('"some" gives roughly half the rounds an obstacle', () => {
+    let n = 0;
+    for (let seed = 1; seed <= 200; seed++) n += createMatch({ seed, modeId: 'duel', windOn: true, walls: 'some', players }).obstacles.length;
+    expect(n).toBeGreaterThan(60);
+    expect(n).toBeLessThan(140);
+  });
+
+  it('a flat shot sticks in the wall; the bot lobs over it', () => {
+    const s = createMatch({ seed: 2, modeId: 'duel', windOn: false, walls: 'always', players });
+    const { state } = applyShot(s, { angle: 5, power: 1 });
+    expect(state.arrows[0].owner).toBeNull();
+    expect(state.lastEvent!.zone).toBeNull();
+    const shot = botShot({ ...s, shots: [9, 9] }, s.turn, 30); // shots=9 => nearly no bot error
+    const r = applyShot(s, shot);
+    expect(r.flight.impact.kind).not.toBe('wall');
+  });
+
+  it('rematch keeps the walls setting', () => {
+    const s = createMatch({ seed: 2, modeId: 'apple', windOn: false, walls: 'always', players });
+    expect(rematch(s, 77).walls).toBe('always');
   });
 });

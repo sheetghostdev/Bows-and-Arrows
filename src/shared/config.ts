@@ -85,6 +85,20 @@ export const CONFIG = {
     distance: [12, 18] as [number, number],
   },
 
+  walls: {
+    /** With "Some walls", the chance a round gets an obstacle. */
+    someChance: 0.5,
+    /** Tallest point is capped by distance so a lob over it can always still land on the far archer. */
+    maxHeightBase: 1.2,
+    maxHeightPerMetre: 0.3,
+    maxHeight: 5.5,
+    wallWidth: 0.9,
+    minWallHeight: 2.8,
+    houseWidth: [2.4, 3.6] as [number, number],
+    houseHeight: [2.0, 3.0] as [number, number],
+    roofHeight: [1.0, 1.8] as [number, number],
+  },
+
   wind: {
     /**
      * Horizontal acceleration at strength 10. Kept small enough that full power

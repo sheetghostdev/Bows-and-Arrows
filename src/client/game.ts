@@ -5,7 +5,7 @@ import { clampInput, type Flight, type ShotInput } from '../shared/physics';
 import { groundY } from '../shared/terrain';
 import { sfx } from './audio';
 import { Camera } from './camera';
-import { ARROW_LEN, BALLOON_COLORS, BURY, drawArcher, drawArrow, drawBalloon, drawBoard, drawFlag, drawMover, idlePose, type ArcherPose } from './draw';
+import { ARROW_LEN, BALLOON_COLORS, BURY, drawArcher, drawArrow, drawBalloon, drawBoard, drawFlag, drawMover, drawObstacle, idlePose, type ArcherPose } from './draw';
 import { Ragdoll } from './ragdoll';
 import { Fx } from './fx';
 import { prefs } from './prefs';
@@ -230,7 +230,13 @@ export class GameView {
     const feel = CONFIG.feel;
     a.hold = feel.impactHoldMs / 1000;
 
-    if (imp.kind === 'ground' || imp.kind === 'none') {
+    if (imp.kind === 'wall') {
+      // Thunk into stone or plaster: chips and a solid knock.
+      const o = s.obstacles[0];
+      this.fx.burst(imp.x, imp.y, 12, o?.kind === 'house' ? '#e6cfa6' : '#8a8a98', 2.6);
+      this.cam.shake += feel.shakeGround * 1.5;
+      sfx.thud();
+    } else if (imp.kind === 'ground' || imp.kind === 'none') {
       this.fx.burst(imp.x, imp.y, 10, '#8a6f4d', 2.4);
       this.cam.shake += feel.shakeGround;
       sfx.thud();
@@ -584,11 +590,12 @@ export class GameView {
 
     this.drawGhost(s);
 
-    // Ground arrows go first so the ground hides their buried tips.
+    // Arrows stuck in the ground or a wall go first, so the ground/wall hides their buried tips.
     for (const a of s.arrows) {
       if (a.owner !== null) continue;
       drawArrow(ctx, a.x + Math.cos(a.angle) * BURY.ground, a.y + Math.sin(a.angle) * BURY.ground, a.angle, s.players[a.shooter].color);
     }
+    for (const o of s.obstacles) drawObstacle(ctx, o);
 
     // Ground
     const step = Math.max(0.25, 6 / this.cam.zoom);

@@ -1,5 +1,6 @@
 import { BODY } from '../shared/body';
 import type { StuckArrow } from '../shared/match';
+import type { Obstacle } from '../shared/physics';
 
 /** All drawing functions here work in world metres with +y up (the camera sets that up). */
 
@@ -311,4 +312,45 @@ export function drawMover(ctx: CanvasRenderingContext2D, cx: number, laneX: numb
   ctx.restore();
   // Three equal rings, matching the scoring bands: outer, middle, bullseye.
   drawBullseye(ctx, cx, y, r, ['#ffffff', '#e4572e', '#ffd166']);
+}
+
+/** Stone wall or a little house, drawn exactly over its collision shape. */
+export function drawObstacle(ctx: CanvasRenderingContext2D, o: Obstacle) {
+  const left = o.x - o.w / 2;
+  const top = o.base + o.h;
+  if (o.kind === 'wall') {
+    ctx.fillStyle = '#a3a3b0';
+    ctx.fillRect(left, o.base, o.w, o.h);
+    // Brick courses
+    ctx.strokeStyle = '#8a8a98';
+    ctx.lineWidth = 0.03;
+    const course = 0.34;
+    let row = 0;
+    for (let y = o.base + course; y < top; y += course, row++) {
+      line(ctx, left, y, left + o.w, y);
+      const off = row % 2 ? o.w * 0.5 : o.w * 0.25;
+      line(ctx, left + off, y, left + off, Math.min(top, y + course));
+    }
+    ctx.fillStyle = '#868694';
+    ctx.fillRect(left - 0.06, top - 0.14, o.w + 0.12, 0.14);
+    return;
+  }
+  // House: walls, door, window, then the roof (its triangle is the collision roof).
+  ctx.fillStyle = '#f2e2c4';
+  ctx.fillRect(left, o.base, o.w, o.h);
+  ctx.fillStyle = '#8a5a3b';
+  const doorW = Math.min(0.55, o.w * 0.22);
+  ctx.fillRect(o.x - doorW / 2 + o.w * 0.18, o.base, doorW, Math.min(1.1, o.h * 0.5) + 0.2);
+  ctx.fillStyle = '#9fd3ec';
+  ctx.fillRect(left + o.w * 0.14, o.base + o.h * 0.5, o.w * 0.22, o.h * 0.25);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 0.04;
+  ctx.strokeRect(left + o.w * 0.14, o.base + o.h * 0.5, o.w * 0.22, o.h * 0.25);
+  ctx.fillStyle = '#b5543b';
+  ctx.beginPath();
+  ctx.moveTo(left - 0.12, top - 0.06);
+  ctx.lineTo(o.x, top + o.roof);
+  ctx.lineTo(left + o.w + 0.12, top - 0.06);
+  ctx.closePath();
+  ctx.fill();
 }

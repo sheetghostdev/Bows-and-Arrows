@@ -1,6 +1,6 @@
 import { BODY, facingOf, sweepOffset } from './body';
 import { CONFIG } from './config';
-import { archerGround, archerX, launchFor, modeOf, sweepPeriod, windAccel, type MatchState, type Target } from './match';
+import { archerGround, archerX, flightFor, launchFor, modeOf, sweepPeriod, windAccel, type MatchState, type Target } from './match';
 import { launchVelocity, simulate, type ShotInput } from './physics';
 
 /** Height of a flight path where it crosses x = tx (or -Infinity if it lands first). */
@@ -93,9 +93,15 @@ export function botShot(s: MatchState, shooter: number, preferredAngle: number, 
   const period = sweepPeriod(s);
   const phase = period > 0 ? (releasePhase ?? Math.random() * period) : undefined;
   const solve = (a: number) => (phase !== undefined ? solveLead(s, shooter, a, phase) : solvePower(s, shooter, a, target.x, target.y));
+  // A wall or house in the way? Only take angles whose (perfect) flight gets over it.
+  const clears = (a: number, p: number | null) => {
+    if (p === null || !s.obstacles.length) return p !== null;
+    const v = launchVelocity({ angle: a, power: p }, facingOf(shooter));
+    return flightFor(s, shooter, v.vx, v.vy, windAccel(s.windLevel, shooter), phase).impact.kind !== 'wall';
+  };
   let angle = preferredAngle;
   let power = solve(angle);
-  for (let a = 30; power === null && a <= 85; a += 5) {
+  for (let a = 30; !clears(angle, power) && a <= 87; a += 3) {
     angle = a;
     power = solve(angle);
   }

@@ -2,7 +2,7 @@
  * Stick-man geometry in archer-local space: feet at (0,0), +x = facing direction, +y = up.
  * The renderer draws the idle pose from these same numbers, so what you see is what you hit.
  */
-export type Zone = 'head' | 'body' | 'apple';
+export type Zone = 'head' | 'body' | 'apple' | 'balloon';
 
 export const BODY = {
   hip: { x: 0, y: 0.92 },
@@ -32,7 +32,12 @@ export interface Hitbox {
   by: number;
   r: number;
   zone: Zone;
+  /** Archer index, or -1 for things that belong to nobody (balloons). */
   owner: number;
+  /** Arrows fly straight through this (and pop it) instead of stopping. */
+  pierce?: boolean;
+  /** Which balloon, for pierce targets. */
+  id?: number;
 }
 
 export const facingOf = (player: number): 1 | -1 => (player === 0 ? 1 : -1);

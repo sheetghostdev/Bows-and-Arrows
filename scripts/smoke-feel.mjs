@@ -27,7 +27,7 @@ await page.goto(base);
 await page.waitForFunction(() => !!window.__ba);
 await page.getByText('Duel').click();
 await page.getByText('Same screen').click();
-await page.waitForTimeout(500);
+await page.waitForTimeout(2600);
 await shoot(-0.45); // body shot
 await page.waitForTimeout(1600);
 await page.screenshot({ path: `${out}/f1-body-hit.png` });
@@ -47,7 +47,7 @@ await page.waitForTimeout(5000);
 await page.screenshot({ path: `${out}/f5-game-over.png` });
 // Near miss slow-mo: aim just above the head.
 await page.getByText('Rematch').click();
-await page.waitForTimeout(1500);
+await page.waitForTimeout(2600);
 await shoot(0.5);
 await page.waitForTimeout(1350);
 await page.screenshot({ path: `${out}/f6-near-miss.png` });
@@ -57,10 +57,25 @@ await page.goto(base);
 await page.waitForFunction(() => !!window.__ba);
 await page.getByText('Apple Shot').click();
 await page.getByText('Same screen').click();
-await page.waitForTimeout(500);
+await page.waitForTimeout(2600);
 await page.screenshot({ path: `${out}/f7-apple-start.png` });
 await shoot(0);
 await page.waitForTimeout(1250);
 await page.screenshot({ path: `${out}/f8-apple-hit.png` });
+
+// Balloons
+await page.goto(base);
+await page.waitForFunction(() => !!window.__ba);
+await page.getByText('Balloons').click();
+await page.getByText('Same screen').click();
+await page.waitForTimeout(700);
+await page.screenshot({ path: `${out}/f9-balloons-intro.png` });
+await page.waitForTimeout(2000);
+await page.screenshot({ path: `${out}/f10-balloons-aim.png` });
+await shoot(0);
+await page.waitForTimeout(900);
+await page.screenshot({ path: `${out}/f11-balloon-pop.png` });
+await page.waitForTimeout(2600);
+await page.screenshot({ path: `${out}/f12-next-shooter.png` });
 console.log(errors.length ? errors.join('\n') : 'no errors', Date.now() - t0);
 await browser.close();

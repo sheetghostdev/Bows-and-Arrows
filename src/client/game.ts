@@ -5,7 +5,7 @@ import { clampInput, type Flight, type ShotInput } from '../shared/physics';
 import { groundY } from '../shared/terrain';
 import { sfx } from './audio';
 import { Camera } from './camera';
-import { ARROW_LEN, BURY, drawArcher, drawArrow, drawFlag, idlePose, type ArcherPose } from './draw';
+import { ARROW_LEN, BALLOON_COLORS, BURY, drawArcher, drawArrow, drawBalloon, drawFlag, idlePose, type ArcherPose } from './draw';
 import { Fx } from './fx';
 import { prefs } from './prefs';
 
@@ -40,6 +40,8 @@ interface ActiveShot {
   hold: number;
   slowmo: { from: number; to: number } | null;
   wispTimer: number;
+  /** Index of the next balloon pop to play. */
+  popIdx: number;
 }
 
 interface Drag {
@@ -49,6 +51,8 @@ interface Drag {
   cx: number;
   cy: number;
   player: number;
+  /** Recent pointer positions, so a release can ignore the last-instant twitch. */
+  hist: { t: number; x: number; y: number }[];
 }
 
 const DT = CONFIG.physics.dt;
@@ -82,6 +86,8 @@ export class GameView {
   private ghost: { key: string; path: number[] } | null = null;
   private lastCreak = 0;
   private apples = [true, true];
+  /** Seconds left of the whole-field view at the start of a round. */
+  private intro = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -144,7 +150,7 @@ export class GameView {
 
   private canAim(): boolean {
     const s = this.state;
-    return !!(this.interactive && s && s.phase === 'aim' && this.settled && this.driver?.controls(s.turn));
+    return !!(this.interactive && s && s.phase === 'aim' && this.settled && this.intro <= 0 && this.driver?.controls(s.turn));
   }
 
   private setState(s: MatchState) {
@@ -157,6 +163,7 @@ export class GameView {
       this.fx.clear();
       this.ghost = null;
       if (prev) this.fade = 1;
+      this.intro = CONFIG.feel.introSeconds;
       this.aimCamera();
       this.cam.snap();
     } else if (s.lastEvent?.kind === 'skip' && prev.seq !== s.seq) {
@@ -202,7 +209,7 @@ export class GameView {
     if (this.driver?.controls(shot.shooter)) prefs.hinted = true;
     sfx.release();
     sfx.startWhoosh();
-    this.active = { shot, flight, after, t: 0, impacted: false, hold: 0, slowmo, wispTimer: 0 };
+    this.active = { shot, flight, after, t: 0, impacted: false, hold: 0, slowmo, wispTimer: 0, popIdx: 0 };
   }
 
   private onImpact(a: ActiveShot) {
@@ -257,7 +264,8 @@ export class GameView {
   private onDown(e: PointerEvent) {
     sfx.unlock();
     if (!this.canAim() || this.drag) return;
-    this.drag = { id: e.pointerId, sx: e.clientX, sy: e.clientY, cx: e.clientX, cy: e.clientY, player: this.state!.turn };
+    const t = performance.now();
+    this.drag = { id: e.pointerId, sx: e.clientX, sy: e.clientY, cx: e.clientX, cy: e.clientY, player: this.state!.turn, hist: [{ t, x: e.clientX, y: e.clientY }] };
     try {
       this.canvas.setPointerCapture(e.pointerId);
     } catch {
@@ -270,6 +278,9 @@ export class GameView {
     if (!d || e.pointerId !== d.id) return;
     d.cx = e.clientX;
     d.cy = e.clientY;
+    const now = performance.now();
+    d.hist.push({ t: now, x: d.cx, y: d.cy });
+    while (d.hist.length > 2 && now - d.hist[0].t > 500) d.hist.shift();
     const input = this.dragInput(d);
     this.driver?.aim?.(input.power >= CONFIG.aim.minPower ? input : null);
     if (Math.abs(input.power - this.lastCreak) > 0.12) {
@@ -281,8 +292,12 @@ export class GameView {
   private onUp(e: PointerEvent) {
     const d = this.drag;
     if (!d || e.pointerId !== d.id) return;
-    d.cx = e.clientX;
-    d.cy = e.clientY;
+    // Fire what was on screen just before the finger lifted, not the twitch of lifting it.
+    const cutoff = performance.now() - CONFIG.aim.releaseSettleMs;
+    let settled = d.hist[0];
+    for (const h of d.hist) if (h.t <= cutoff) settled = h;
+    d.cx = settled.x;
+    d.cy = settled.y;
     const input = this.dragInput(d);
     this.drag = null;
     this.lastCreak = 0;
@@ -324,6 +339,7 @@ export class GameView {
       const { from, to } = this.active.slowmo;
       if (this.active.t >= from && this.active.t <= to) gdt *= CONFIG.feel.slowMoScale;
     }
+    if (this.intro > 0 && this.settled) this.intro -= rdt;
     if (this.drag && !this.canAim()) this.cancelDrag();
     this.updateShot(gdt, rdt);
     this.updatePoses(rdt);
@@ -356,6 +372,15 @@ export class GameView {
         a.impacted = true;
         this.onImpact(a);
         return;
+      }
+      while (a.popIdx < a.flight.pops.length && a.flight.pops[a.popIdx].step <= a.t / DT) {
+        const pop = a.flight.pops[a.popIdx++];
+        const b = this.state?.balloons[pop.id];
+        const color = BALLOON_COLORS[(b?.color ?? 0) % BALLOON_COLORS.length];
+        this.fx.burst(pop.x, pop.y, 18, color, 4, { gravity: 3 });
+        this.fx.text(pop.x, pop.y + 0.6, '+1', '#3fa34d', 34);
+        this.cam.shake += CONFIG.feel.shakeBody * 0.6;
+        sfx.pop();
       }
       const tp = this.tip(a);
       sfx.whoosh(Math.min(1, Math.hypot(tp.vx, tp.vy) / CONFIG.aim.maxSpeed));
@@ -416,26 +441,54 @@ export class GameView {
     return { x: s.distance / 2, y: g + ((groundAt - 0.5) * this.h) / zoom, zoom };
   }
 
-  /** Wide view when idle; while an arrow flies, follow it but keep the ground in frame. */
+  /** Close-up on one archer, a quarter of the way in from the screen edge behind them. */
+  private closeView(p: number) {
+    const s = this.state!;
+    const zoom = Math.max(this.wideView().zoom, Math.min((CONFIG.feel.closeUp * this.h) / 1.9, this.w / 8));
+    const groundAt = this.h > this.w ? 0.62 : 0.74;
+    return {
+      x: archerX(s, p) + facingOf(p) * (this.w / zoom) * 0.27,
+      y: archerGround(s, p) + ((groundAt - 0.5) * this.h) / zoom,
+      zoom,
+    };
+  }
+
+  /**
+   * Round start: the whole field, briefly. Aiming: close-up on the shooter, so you
+   * judge the distance by feel. In flight: follow the arrow (zooming out for high
+   * lobs so the ground stays in frame), hold on the landing, then pan to the next shooter.
+   */
   private aimCamera() {
     const s = this.state;
     if (!s) return;
-    const wide = this.wideView();
     const a = this.active;
     if (!a) {
-      this.cam.setTarget(wide.x, wide.y, wide.zoom);
+      const v = !this.interactive || this.intro > 0 || s.phase !== 'aim' ? this.wideView() : this.closeView(s.turn);
+      this.cam.setTarget(v.x, v.y, v.zoom);
       return;
     }
     const h = this.h;
+    const close = this.closeView(a.shot.shooter).zoom;
+    // Landed: if the target is fairly close, pull back to show both, so you can see how far off you were.
+    const o = 1 - a.shot.shooter;
+    const ix = a.flight.impact.x;
+    const span = Math.abs(archerX(s, o) - ix) + 5;
+    if (a.impacted && modeOf(s).hitArchers && span < 2.2 * (this.w / close)) {
+      const zoom = Math.max(this.wideView().zoom, Math.min(close * CONFIG.feel.followZoom, this.w / span));
+      const g = Math.min(groundY(s.terrain, ix), archerGround(s, o));
+      const groundAt = this.h > this.w ? 0.62 : 0.74;
+      this.cam.setTarget((archerX(s, o) + ix) / 2, g + ((groundAt - 0.5) * h) / zoom, zoom);
+      return;
+    }
     const tp = a.impacted ? { x: a.flight.impact.x, y: a.flight.impact.y, vx: 0, vy: 0 } : this.tip(a);
     const g = groundY(s.terrain, tp.x);
-    let zoom = Math.min(wide.zoom * CONFIG.feel.followZoom, (0.6 * h) / (Math.max(0, tp.y - g) + 1.5));
-    zoom = Math.max(zoom, wide.zoom * 0.45);
+    let zoom = Math.min(close * CONFIG.feel.followZoom, (0.6 * h) / (Math.max(0, tp.y - g) + 1.5));
+    zoom = Math.max(zoom, close * 0.3);
     // Ground near the bottom; if the arrow is higher than fits, slide up with it.
-    let y = g + (0.32 * h) / zoom;
+    let y = g + (0.3 * h) / zoom;
     const top = y + (0.36 * h) / zoom;
     if (tp.y > top) y += tp.y - top;
-    this.cam.setTarget(tp.x + tp.vx * 0.1, y, zoom);
+    this.cam.setTarget(tp.x + tp.vx * 0.08, y, zoom);
   }
 
   // ---------------------------------------------------------------- render
@@ -492,6 +545,7 @@ export class GameView {
 
     // Archers
     const mode = modeOf(s);
+    const a0 = this.active;
     for (const p of [0, 1]) {
       drawArcher(ctx, {
         x: archerX(s, p),
@@ -503,6 +557,15 @@ export class GameView {
         arrows: s.arrows.filter((a) => a.owner === p).map((a) => ({ a, color: s.players[a.shooter].color })),
       });
     }
+    // Balloons (hide the ones this flight has already popped)
+    if (s.balloons.length) {
+      const popped = new Set<number>();
+      if (a0 && !a0.impacted) for (const pop of a0.flight.pops) if (pop.step <= a0.t / DT) popped.add(pop.id);
+      s.balloons.forEach((b, id) => {
+        if (b.alive && !popped.has(id)) drawBalloon(ctx, b.x, b.y + Math.sin(this.time * 1.3 + id * 1.7) * 0.04, b.r, BALLOON_COLORS[b.color % BALLOON_COLORS.length]);
+      });
+    }
+
     // A fresh apple pops back after an apple hit, once the camera returns.
     if (this.settled) this.apples = [true, true];
 

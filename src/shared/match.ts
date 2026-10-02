@@ -29,6 +29,14 @@ export interface LastShot {
   wind: number;
 }
 
+export interface Balloon {
+  x: number;
+  y: number;
+  r: number;
+  color: number;
+  alive: boolean;
+}
+
 export type Phase = 'aim' | 'roundOver' | 'matchOver';
 export type EndReason = 'ko' | 'points' | 'forfeit';
 
@@ -39,6 +47,8 @@ export interface LastEvent {
   damage: number;
   points: number;
   killed: boolean;
+  /** Balloons popped by this shot. */
+  pops: number;
 }
 
 export interface MatchState {
@@ -65,6 +75,8 @@ export interface MatchState {
   windLevel: number;
 
   arrows: StuckArrow[];
+  /** Balloons in the current round (Balloons mode). */
+  balloons: Balloon[];
   /** Each player's previous shot this round (for the ghost trail). */
   lastShot: (LastShot | null)[];
 
@@ -114,6 +126,7 @@ export function createMatch(o: NewMatch): MatchState {
     turn: 0,
     windLevel: 0,
     arrows: [],
+    balloons: [],
     lastShot: [null, null],
     phase: 'aim',
     roundWinner: null,
@@ -135,6 +148,7 @@ function setupRound(s: MatchState): void {
   s.points = [0, 0];
   s.shots = [0, 0];
   s.arrows = [];
+  s.balloons = makeBalloons(s, rng);
   s.lastShot = [null, null];
   s.shotInRound = 0;
   s.turn = (s.matchFirst + s.round) % 2;
@@ -142,6 +156,33 @@ function setupRound(s: MatchState): void {
   s.phase = 'aim';
   s.roundWinner = null;
   s.lastEvent = null;
+}
+
+/**
+ * Balloons come in mirrored pairs (same height, same distance from each archer),
+ * plus one in the middle when the count is odd, so neither side gets easier ones.
+ */
+function makeBalloons(s: MatchState, rng: () => number): Balloon[] {
+  const n = modeOf(s).balloons;
+  const { radius, minHeight, maxHeight } = CONFIG.balloons;
+  const out: Balloon[] = [];
+  const q2 = (v: number) => Math.round(v * 100) / 100;
+  const ground = (x: number) => groundY(s.terrain, x);
+  const ok = (x: number, y: number) => out.every((b) => (b.x - x) * (b.x - x) + (b.y - y) * (b.y - y) > (radius * 3.2) ** 2);
+  const d = s.distance;
+  if (n % 2 === 1) {
+    const x = q2(d / 2);
+    out.push({ x, y: q2(ground(x) + minHeight + rng() * (maxHeight - minHeight)), r: radius, color: 0, alive: true });
+  }
+  for (let tries = 0; out.length < n && tries < 400; tries++) {
+    // Somewhere between 20% and 50% of the way across (mirrored to the other half).
+    const x = q2(d * (0.2 + rng() * 0.28));
+    const y = q2(Math.max(ground(x), ground(d - x)) + minHeight + rng() * (maxHeight - minHeight));
+    if (!ok(x, y) || !ok(q2(d - x), y)) continue;
+    const color = out.length % 5;
+    out.push({ x, y, r: radius, color, alive: true }, { x: q2(d - x), y, r: radius, color: (color + 2) % 5, alive: true });
+  }
+  return out.slice(0, n);
 }
 
 /**
@@ -180,7 +221,13 @@ export function launchFor(s: MatchState, shooter: number, vx: number, vy: number
 /** What a shot from `shooter` can hit: the opponent (and their apple). Your own arrows never hit you. */
 export function targetsFor(s: MatchState, shooter: number): Hitbox[] {
   const o = 1 - shooter;
-  return archerHitboxes(o, archerX(s, o), archerGround(s, o), modeOf(s).apple);
+  const mode = modeOf(s);
+  const boxes: Hitbox[] = [];
+  s.balloons.forEach((b, id) => {
+    if (b.alive) boxes.push({ ax: b.x, ay: b.y, bx: b.x, by: b.y, r: b.r, zone: 'balloon', owner: -1, pierce: true, id });
+  });
+  if (mode.hitArchers) boxes.push(...archerHitboxes(o, archerX(s, o), archerGround(s, o), mode.apple));
+  return boxes;
 }
 
 export function flightFor(s: MatchState, shooter: number, vx: number, vy: number, wind: number): Flight {
@@ -201,7 +248,17 @@ export function applyShot(prev: MatchState, input: ShotInput): { state: MatchSta
   const s = structuredClone(prev);
   const shooter = shot.shooter;
   const imp = flight.impact;
-  const event: LastEvent = { kind: 'shot', shooter, zone: imp.zone, damage: 0, points: 0, killed: false };
+  const event: LastEvent = { kind: 'shot', shooter, zone: imp.zone, damage: 0, points: 0, killed: false, pops: 0 };
+
+  const popRule = modeOf(s).zones.balloon;
+  for (const pop of flight.pops) {
+    s.balloons[pop.id].alive = false;
+    event.pops++;
+    if (popRule?.points) {
+      s.points[shooter] += popRule.points;
+      event.points += popRule.points;
+    }
+  }
 
   if (imp.kind === 'ground') {
     s.arrows.push({ shooter, owner: null, x: imp.x, y: imp.y, angle: Math.atan2(imp.vy, imp.vx) });
@@ -226,7 +283,7 @@ export function applyShot(prev: MatchState, input: ShotInput): { state: MatchSta
     }
     if (rule?.points) {
       s.points[shooter] += rule.points;
-      event.points = rule.points;
+      event.points += rule.points;
     }
   }
 
@@ -240,7 +297,7 @@ export function applyShot(prev: MatchState, input: ShotInput): { state: MatchSta
 export function skipTurn(prev: MatchState): MatchState {
   if (prev.phase !== 'aim') return prev;
   const s = structuredClone(prev);
-  s.lastEvent = { kind: 'skip', shooter: s.turn, zone: null, damage: 0, points: 0, killed: false };
+  s.lastEvent = { kind: 'skip', shooter: s.turn, zone: null, damage: 0, points: 0, killed: false, pops: 0 };
   finishTurn(s);
   return s;
 }
@@ -254,6 +311,12 @@ function finishTurn(s: MatchState): void {
   if (mode.usesHp) {
     const dead = s.hp.findIndex((h) => h <= 0);
     if (dead >= 0) return endRound(s, 1 - dead, 'ko');
+  }
+  const target = mode.pointsToWin;
+  if (target !== null) {
+    const leader = s.points[0] === s.points[1] ? -1 : s.points[0] > s.points[1] ? 0 : 1;
+    const allPopped = mode.balloons > 0 && s.balloons.every((b) => !b.alive);
+    if (leader >= 0 && (s.points[leader] >= target || allPopped)) return endRound(s, leader, 'points');
   }
   const n = mode.shotsPerPlayer;
   if (n !== null && s.shots[0] >= n && s.shots[0] === s.shots[1] && s.points[0] !== s.points[1]) {

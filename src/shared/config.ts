@@ -22,7 +22,9 @@ export const CONFIG = {
     minAngle: -30,
     maxAngle: 89,
     /** Drag distance for 100% power, as a fraction of the smaller screen side. */
-    dragForFullPower: 0.42,
+    dragForFullPower: 0.5,
+    /** On release, use the aim from this long before the finger lifted (lifting a thumb nudges it). */
+    releaseSettleMs: 80,
   },
 
   arena: {
@@ -47,6 +49,16 @@ export const CONFIG = {
     applePoints: 1,
     /** Hitting the opponent anywhere (body or head) costs this. */
     hitPenalty: -1,
+  },
+
+  balloons: {
+    /** Odd, so a race to more than half can't tie. */
+    count: 9,
+    pointsToWin: 5,
+    radius: 0.32,
+    /** Height above the ground. */
+    minHeight: 1.6,
+    maxHeight: 7,
   },
 
   wind: {
@@ -81,10 +93,14 @@ export const CONFIG = {
     slowMoScale: 0.3,
     /** Half-width (game seconds) of the slow-motion window around closest approach. */
     slowMoWindow: 0.07,
-    /** Camera zoom multiplier while following the arrow. */
-    followZoom: 1.35,
-    /** Pause on the impact before the camera returns to the wide view. */
-    impactHoldMs: 650,
+    /** While aiming, the archer fills this much of the screen height (the opponent is off-screen). */
+    closeUp: 0.3,
+    /** Each round opens on the whole field for this long, then zooms to the shooter. */
+    introSeconds: 1.8,
+    /** Camera zoom while following the arrow, relative to the close-up. */
+    followZoom: 0.8,
+    /** Pause on the impact before the camera moves to the next shooter. */
+    impactHoldMs: 1000,
   },
 
   bot: {

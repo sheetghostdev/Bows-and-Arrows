@@ -248,3 +248,29 @@ export function drawFlag(ctx: CanvasRenderingContext2D, x: number, ground: numbe
   ctx.closePath();
   ctx.fill();
 }
+
+export const BALLOON_COLORS = ['#ef476f', '#ffd166', '#06d6a0', '#118ab2', '#9b5de5'];
+
+/** Balloon centered at (x, y) with radius r, string hanging below. */
+export function drawBalloon(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, color: string) {
+  ctx.strokeStyle = 'rgba(80,80,90,0.6)';
+  ctx.lineWidth = 0.02;
+  ctx.beginPath();
+  ctx.moveTo(x, y - r * 1.15);
+  ctx.bezierCurveTo(x + 0.12, y - r * 1.15 - 0.35, x - 0.12, y - r * 1.15 - 0.7, x + 0.03, y - r * 1.15 - 1.0);
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x, y - r * 1.12);
+  ctx.lineTo(x - 0.06, y - r * 1.12 - 0.08);
+  ctx.lineTo(x + 0.06, y - r * 1.12 - 0.08);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(x, y, r, r * 1.15, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.beginPath();
+  ctx.ellipse(x - r * 0.38, y + r * 0.4, r * 0.18, r * 0.3, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+}

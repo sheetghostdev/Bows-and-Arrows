@@ -10,6 +10,7 @@
     "build": "vite build",
     "preview": "vite build && wrangler dev --port 8787",
     "deploy": "vite build && wrangler deploy",
+    "build:offline": "node scripts/build-offline.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
     "test": "vitest run",
     "e2e": "E2E=1 vitest run"

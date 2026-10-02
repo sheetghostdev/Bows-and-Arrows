@@ -37,9 +37,15 @@ export function solvePower(s: MatchState, shooter: number, angle: number, tx: nu
   return hi;
 }
 
-/** Where the bot (or a test) aims: the head in Duel, the apple in Apple Shot. */
+/** Where the bot (or a test) aims: the head in Duel, the apple in Apple Shot, the nearest balloon in Balloons. */
 export function aimPoint(s: MatchState, shooter: number): { x: number; y: number } {
   const o = 1 - shooter;
+  const alive = s.balloons.filter((b) => b.alive);
+  if (alive.length) {
+    const from = archerX(s, shooter);
+    const b = alive.reduce((best, c) => (Math.abs(c.x - from) < Math.abs(best.x - from) ? c : best));
+    return { x: b.x, y: b.y };
+  }
   const p = modeOf(s).apple ? BODY.apple : BODY.head;
   return { x: archerX(s, o) + p.x * facingOf(o), y: archerGround(s, o) + p.y };
 }
@@ -58,7 +64,7 @@ export function botShot(s: MatchState, shooter: number, preferredAngle: number):
   const skill = Math.pow(learnRate, s.shots[shooter]);
   let angle = preferredAngle;
   let power = solvePower(s, shooter, angle, target.x, target.y);
-  for (let a = 45; power === null && a <= 60; a += 5) {
+  for (let a = 30; power === null && a <= 85; a += 5) {
     angle = a;
     power = solvePower(s, shooter, angle, target.x, target.y);
   }

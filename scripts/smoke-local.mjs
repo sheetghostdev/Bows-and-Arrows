@@ -14,7 +14,9 @@ await page.goto(base);
 await page.waitForTimeout(600);
 await page.screenshot({ path: `${out}/01-home.png` });
 await page.getByText('Vs bot').click();
-await page.waitForTimeout(800);
+await page.waitForTimeout(600);
+await page.screenshot({ path: `${out}/02-intro.png` });
+await page.waitForTimeout(2600);
 await page.screenshot({ path: `${out}/02-game.png` });
 
 // Drag back (down-left) from the middle of the screen.

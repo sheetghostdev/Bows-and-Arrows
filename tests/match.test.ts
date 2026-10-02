@@ -9,8 +9,11 @@ const players = [{ name: 'A', color: '#f00' }, { name: 'B', color: '#00f' }];
 
 function perfect(s: MatchState, aimY = 0): ShotInput {
   const t = aimPoint(s, s.turn);
-  const angle = 35;
-  return { angle, power: solvePower(s, s.turn, angle, t.x, t.y + aimY)! };
+  for (const angle of [35, 45, 55, 65, 75, 25, 15]) {
+    const power = solvePower(s, s.turn, angle, t.x, t.y + aimY);
+    if (power !== null) return { angle, power };
+  }
+  throw new Error('unreachable target');
 }
 
 const miss: ShotInput = { angle: 80, power: 0.25 };
@@ -84,5 +87,53 @@ describe('match rules', () => {
     expect(s.phase).toBe('aim'); // opponent still gets their reply
     s = skipTurn(s);
     expect(s.phase).toBe('matchOver');
+  });
+});
+
+describe('balloons mode', () => {
+  it('places mirrored balloons so both sides get the same shots', () => {
+    for (let seed = 1; seed < 50; seed++) {
+      const s = createMatch({ seed, modeId: 'balloons', windOn: true, players });
+      expect(s.balloons.length).toBe(CONFIG.balloons.count);
+      const key = (x: number, y: number) => `${x.toFixed(2)},${y.toFixed(2)}`;
+      const set = new Set(s.balloons.map((b) => key(b.x, b.y)));
+      for (const b of s.balloons) expect(set.has(key(Math.round((s.distance - b.x) * 100) / 100, b.y))).toBe(true);
+    }
+  });
+
+  it('pops balloons for points, arrows pass through archers, first to N wins', () => {
+    let s = createMatch({ seed: 21, modeId: 'balloons', windOn: false, players });
+    const first = s.turn;
+    let guard = 0;
+    while (s.phase === 'aim' && guard++ < 40) {
+      // Only the first player shoots; the other skips.
+      if (s.turn === first) {
+        const before = s.points[first];
+        s = applyShot(s, perfect(s)).state;
+        expect(s.lastEvent!.pops).toBeGreaterThanOrEqual(1);
+        expect(s.points[first]).toBe(before + s.lastEvent!.pops);
+      } else s = skipTurn(s);
+    }
+    expect(s.phase).toBe('matchOver');
+    expect(s.matchWinner).toBe(first);
+    expect(s.points[first]).toBeGreaterThanOrEqual(CONFIG.balloons.pointsToWin);
+    // Nobody got shot.
+    expect(s.arrows.every((a) => a.owner === null)).toBe(true);
+  });
+
+  it('one arrow can pop several balloons in a row', () => {
+    const s = createMatch({ seed: 3, modeId: 'balloons', windOn: false, players });
+    s.terrain = { x0: -80, step: 5, h: new Array(60).fill(0) };
+    s.turn = 0;
+    s.balloons = [];
+    // Put two balloons right on the path of a known shot.
+    const input = { angle: 30, power: 0.7 };
+    const path = applyShot(s, input).flight.path;
+    const at = (i: number) => ({ x: path[i * 2], y: path[i * 2 + 1], r: 0.32, color: 0, alive: true });
+    s.balloons = [at(40), at(80)];
+    const r = applyShot(s, input);
+    expect(r.flight.pops.map((p) => p.id)).toEqual([0, 1]);
+    expect(r.state.points[0]).toBe(2);
+    expect(r.state.balloons.every((b) => !b.alive)).toBe(true);
   });
 });

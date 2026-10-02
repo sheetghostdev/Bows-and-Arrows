@@ -74,6 +74,8 @@ html, body {
 .card .pips { display: flex; gap: 5px; flex: none; }
 .card .pip { width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--pc); }
 .card .pip.on { background: var(--pc); }
+.card .hp { width: 46px; height: 8px; border-radius: 4px; background: rgba(43, 45, 66, 0.15); overflow: hidden; flex: none; }
+.card .hp i { display: block; height: 100%; background: var(--pc); border-radius: 4px; transition: width 0.4s; }
 .card .pts { font-size: 24px; min-width: 1.2em; text-align: center; flex: none; }
 .center-chips { display: flex; gap: 8px; justify-content: center; }
 .chip {

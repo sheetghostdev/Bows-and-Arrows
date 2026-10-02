@@ -148,6 +148,11 @@ class Sfx {
     this.tone('square', 880, 1760, 0.1, 0.005, 0.12);
   }
 
+  pop() {
+    this.burst(0.5, 0.09, 'highpass', 1800);
+    this.tone('sine', 900, 300, 0.2, 0.002, 0.08);
+  }
+
   win() {
     [523, 659, 784, 1046].forEach((f, i) => this.tone('triangle', f, f, 0.2, 0.01, 0.28, i * 0.11));
   }

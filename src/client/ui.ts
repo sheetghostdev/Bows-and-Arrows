@@ -1,5 +1,5 @@
 import { facingOf } from '../shared/body';
-import { PALETTE } from '../shared/config';
+import { CONFIG, PALETTE } from '../shared/config';
 import { modeOf, type MatchState } from '../shared/match';
 import { MODE_LIST, type ModeId } from '../shared/modes';
 import { sfx } from './audio';
@@ -87,7 +87,9 @@ export class Hud {
         score = el('span', { class: 'pts' }, String(s.points[p]));
       }
       const extra = mode.shotsPerPlayer ? el('span', { class: 'muted' }, `${Math.max(0, mode.shotsPerPlayer - s.shots[p])}➶`) : null;
-      card.replaceChildren(...[el('span', { class: 'dot' }), name, score, extra].filter((n): n is HTMLElement => n !== null));
+      // The opponent is usually off-screen, so their health lives up here too.
+      const hp = mode.usesHp ? el('span', { class: 'hp' }, el('i', { style: { width: `${Math.max(0, (s.hp[p] / CONFIG.duel.hp) * 100)}%` } })) : null;
+      card.replaceChildren(...[el('span', { class: 'dot' }), name, hp, score, extra].filter((n): n is HTMLElement => n !== null));
     }
     this.wind.hidden = !s.windOn;
     if (s.windOn) {

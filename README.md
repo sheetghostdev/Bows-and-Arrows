@@ -10,7 +10,12 @@ A tiny two-archer duel for the browser. Drag back, release, and find the right a
 | **Vs bot** | Solo practice. The bot visibly draws its bow and gets more accurate as it adjusts during a round. |
 | **Same screen** | Pass-and-play on one device. |
 
-Games: **Duel** (best of 3; a headshot kills, three body hits kill) and **Apple Shot** (5 arrows each; hit their apple for +1, hit *them* for −1; ties go to sudden-death pairs).
+Games:
+- **Duel**: best of 3. A headshot kills; three body hits kill.
+- **Apple Shot**: 5 arrows each. Hit their apple for +1, hit *them* for −1. Ties go to sudden-death pairs.
+- **Balloons**: 9 balloons float over the field; take turns popping them, first to 5 wins. Arrows fly on after a pop, so one shot can pop several. Nobody gets shot. Balloons are placed in mirrored pairs so both sides get the same shots.
+
+**Camera.** Each round opens on the whole field for a moment, then zooms in on whoever is shooting; the opponent is off-screen, so distance is judged by feel. The camera follows the arrow, holds where it lands (pulling back to show the target if it's close), then pans to the next shooter. On release, the game fires the aim from 80 ms before your finger lifted, so lifting your thumb doesn't nudge the shot.
 
 ## Run it
 
@@ -79,4 +84,5 @@ Add an entry to `MODES` in [`src/shared/modes.ts`](src/shared/modes.ts). A mode 
 - Your own arrows never hit you.
 - The distance is re-rolled every **round**, not just every match, for a little variety inside a best-of-3.
 - The angle/power readout shows one decimal, which is exactly the precision that gets sent, so remembering "41.5°, 73.2%" reproduces a shot when the wind and distance are the same.
+- `npm run build:offline` makes a single HTML file with just vs-bot and same-screen play (no server needed), for quick phone testing.
 - Phones work best sideways. Portrait works, smaller, with a gentle "turn your phone" hint.

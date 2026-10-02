@@ -32,10 +32,19 @@ export interface Impact {
   step: number;
 }
 
+export interface Pop {
+  id: number;
+  x: number;
+  y: number;
+  step: number;
+}
+
 export interface Flight {
   /** Tip position at every step, flattened [x0, y0, x1, y1, ...]. */
   path: number[];
   impact: Impact;
+  /** Balloons (pierce targets) the arrow went through, in order. */
+  pops: Pop[];
   /** Closest miss on an opponent hitbox surface (only meaningful when nothing was hit). */
   nearest: { dist: number; step: number };
 }
@@ -63,8 +72,10 @@ export function launchVelocity(input: ShotInput, facing: 1 | -1): { vx: number; 
 /**
  * Fixed-timestep projectile flight. Only + - * / sqrt after launch: bit-identical everywhere.
  * Collision is tested at `substeps` points along each step so fast arrows can't skip a head.
+ * Pierce targets (balloons) are popped and the arrow keeps going.
  */
-export function simulate(launch: Launch, terrain: Terrain, targets: Hitbox[]): Flight {
+export function simulate(launch: Launch, terrain: Terrain, allTargets: Hitbox[]): Flight {
+  let targets = allTargets;
   const { dt, substeps, gravity, maxFlightSeconds } = CONFIG.physics;
   const maxSteps = Math.ceil(maxFlightSeconds / dt);
   let x = launch.x;
@@ -73,6 +84,7 @@ export function simulate(launch: Launch, terrain: Terrain, targets: Hitbox[]): F
   let vy = launch.vy;
   const path = [x, y];
   const nearest = { dist: Infinity, step: 0 };
+  const pops: Pop[] = [];
 
   for (let step = 1; step <= maxSteps; step++) {
     vx += launch.wind * dt;
@@ -85,24 +97,29 @@ export function simulate(launch: Launch, terrain: Terrain, targets: Hitbox[]): F
       const py = y + (ny - y) * t;
       for (const h of targets) {
         const d = distToSegment(px, py, h) - h.r;
+        if (d <= 0 && h.pierce) {
+          pops.push({ id: h.id ?? -1, x: px, y: py, step });
+          targets = targets.filter((t) => t !== h);
+          continue;
+        }
         if (d <= 0) {
           path.push(px, py);
           const kind: ImpactKind = h.zone === 'apple' ? 'apple' : 'archer';
-          return { path, nearest, impact: { kind, owner: h.owner, zone: h.zone, x: px, y: py, vx, vy, step } };
+          return { path, pops, nearest, impact: { kind, owner: h.owner, zone: h.zone, x: px, y: py, vx, vy, step } };
         }
-        if (d < nearest.dist) {
+        if (h.owner >= 0 && d < nearest.dist) {
           nearest.dist = d;
           nearest.step = step;
         }
       }
       if (py <= groundY(terrain, px)) {
         path.push(px, py);
-        return { path, nearest, impact: { kind: 'ground', owner: null, zone: null, x: px, y: py, vx, vy, step } };
+        return { path, pops, nearest, impact: { kind: 'ground', owner: null, zone: null, x: px, y: py, vx, vy, step } };
       }
     }
     x = nx;
     y = ny;
     path.push(x, y);
   }
-  return { path, nearest, impact: { kind: 'none', owner: null, zone: null, x, y, vx, vy, step: maxSteps } };
+  return { path, pops, nearest, impact: { kind: 'none', owner: null, zone: null, x, y, vx, vy, step: maxSteps } };
 }

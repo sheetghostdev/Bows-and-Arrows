@@ -1,0 +1,21 @@
+name = "bows-and-arrows"
+main = "src/server/worker.ts"
+compatibility_date = "2025-09-01"
+
+# The built game (vite build -> dist) is served as static assets.
+# /ws/* (game sockets) and the HTML pages (/, /m/<code>) run the Worker first;
+# everything else is served straight from dist.
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/ws/*", "/", "/m/*"]
+
+# One Durable Object per match room: authoritative state, WebSockets, timers, storage.
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "MatchRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MatchRoom"]

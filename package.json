@@ -1,0 +1,26 @@
+{
+  "name": "bows-and-arrows",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "predev": "node -e \"require('fs').mkdirSync('dist',{recursive:true})\"",
+    "dev": "concurrently -k -n web,server -c cyan,magenta \"vite --host\" \"wrangler dev --port 8787\"",
+    "dev:web": "vite --host",
+    "build": "vite build",
+    "preview": "vite build && wrangler dev --port 8787",
+    "deploy": "vite build && wrangler deploy",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
+    "test": "vitest run",
+    "e2e": "E2E=1 vitest run"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261002.1",
+    "concurrently": "^10.0.5",
+    "playwright": "^1.56.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.2",
+    "vitest": "^5.0.3",
+    "wrangler": "^4.147.0"
+  }
+}

@@ -1,0 +1,13 @@
+import { chromium, devices } from 'playwright';
+const base = process.argv[2] ?? 'http://localhost:5173';
+const out = process.argv[3] ?? 'test-results';
+const browser = await chromium.launch();
+const ctx = await browser.newContext({ ...devices['iPhone 13'] });
+const page = await ctx.newPage();
+await page.goto(base);
+await page.waitForTimeout(500);
+await page.screenshot({ path: `${out}/p1-home-portrait.png` });
+await page.getByText('Vs bot').tap();
+await page.waitForTimeout(800);
+await page.screenshot({ path: `${out}/p2-game-portrait.png` });
+await browser.close();

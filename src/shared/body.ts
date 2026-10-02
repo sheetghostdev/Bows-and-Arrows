@@ -18,7 +18,7 @@ export const BODY = {
   idleHand: { x: 0.408, y: 1.278 },
   /** Arrows leave from here (in front of the archer, at shoulder height). */
   launch: { x: 0.5, y: 1.4 },
-  apple: { x: 0, y: 1.86, r: 0.085 },
+  apple: { x: 0, y: 1.9, r: 0.115 },
   torsoR: 0.11,
   legR: 0.085,
   armR: 0.06,

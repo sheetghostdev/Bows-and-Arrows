@@ -163,5 +163,12 @@ function route() {
   else goHome();
 }
 
+// Dev-only handle for scripted smoke tests (scripts/*.mjs). Stripped from production builds.
+if (import.meta.env.DEV) {
+  void import('../shared/bot').then((bot) => {
+    (window as unknown as Record<string, unknown>).__ba = { view, bot, local: () => local };
+  });
+}
+
 window.addEventListener('popstate', route);
 route();

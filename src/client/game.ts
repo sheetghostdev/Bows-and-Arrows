@@ -411,7 +411,9 @@ export class GameView {
     const s = this.state!;
     const g = (archerGround(s, 0) + archerGround(s, 1)) / 2;
     const zoom = Math.min(this.w / (s.distance + 6), this.h / 7);
-    return { x: s.distance / 2, y: g + (0.3 * this.h) / zoom, zoom };
+    // Ground near the bottom in landscape; higher up in portrait so the scene isn't lost under the sky.
+    const groundAt = this.h > this.w ? 0.62 : 0.8;
+    return { x: s.distance / 2, y: g + ((groundAt - 0.5) * this.h) / zoom, zoom };
   }
 
   /** Wide view when idle; while an arrow flies, follow it but keep the ground in frame. */
@@ -751,13 +753,15 @@ export class GameView {
       const base = this.cam.toScreen(archerX(s, p0), archerGround(s, p0) + 1.2, w, h);
       const t = (this.time % 1.8) / 1.8;
       const e = t < 0.7 ? t / 0.7 : 1;
-      const fx = base.x - f * 20 - f * e * 90;
+      // The pull can start anywhere; show it toward the middle so it stays on screen.
+      const sx = Math.min(w - 40, Math.max(130, base.x + f * Math.min(160, w * 0.25)));
+      const fx = sx - f * e * 90;
       const fy = base.y + e * 55;
       ctx.globalAlpha = t < 0.85 ? 1 : 1 - (t - 0.85) / 0.15;
       ctx.strokeStyle = 'rgba(43,45,66,0.35)';
       ctx.lineWidth = 4;
       ctx.beginPath();
-      ctx.moveTo(base.x - f * 20, base.y);
+      ctx.moveTo(sx, base.y);
       ctx.lineTo(fx, fy);
       ctx.stroke();
       ctx.fillStyle = 'rgba(255,255,255,0.95)';
@@ -768,8 +772,7 @@ export class GameView {
       ctx.fill();
       ctx.stroke();
       ctx.globalAlpha = 1;
-      const tx = Math.min(w - 150, Math.max(150, base.x + f * 40));
-      this.label('Drag back to aim, release to fire', tx, Math.min(h - 40, base.y + 110), 19, '#2b2d42');
+      this.label('Drag back to aim, release to fire', w / 2, Math.min(h - 40, base.y + 110), Math.min(19, w / 19), '#2b2d42');
     }
   }
 }

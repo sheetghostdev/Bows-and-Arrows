@@ -1,0 +1,66 @@
+// Scripted perfect shots against the dev server to eyeball headshots, KOs, Apple Shot and game over.
+// Usage: node scripts/smoke-feel.mjs [baseUrl] [outDir]
+import { chromium } from 'playwright';
+
+const base = process.argv[2] ?? 'http://localhost:5173';
+const out = process.argv[3] ?? 'test-results';
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2 });
+const errors = [];
+page.on('pageerror', (e) => errors.push(String(e)));
+
+/** Fire a solved shot for whoever's turn it is. yOffset aims above/below the target point. */
+const shoot = (yOffset = 0, angle = 38) =>
+  page.evaluate(
+    ([yOffset, angle]) => {
+      const { bot, local } = window.__ba;
+      const d = local();
+      const s = d.state;
+      const t = bot.aimPoint(s, s.turn);
+      const power = bot.solvePower(s, s.turn, angle, t.x, t.y + yOffset);
+      d.shoot({ angle, power });
+    },
+    [yOffset, angle],
+  );
+
+await page.goto(base);
+await page.waitForFunction(() => !!window.__ba);
+await page.getByText('Duel').click();
+await page.getByText('Same screen').click();
+await page.waitForTimeout(500);
+await shoot(-0.45); // body shot
+await page.waitForTimeout(1600);
+await page.screenshot({ path: `${out}/f1-body-hit.png` });
+await page.waitForTimeout(2000);
+await shoot(0); // headshot by player 2
+const t0 = Date.now();
+await page.waitForTimeout(1250);
+await page.screenshot({ path: `${out}/f2-headshot.png` });
+await page.waitForTimeout(700);
+await page.screenshot({ path: `${out}/f3-ko.png` });
+await page.waitForTimeout(1500);
+await page.screenshot({ path: `${out}/f4-round-banner.png` });
+await page.waitForTimeout(4000);
+// Round 2: headshot ends the match.
+await shoot(0);
+await page.waitForTimeout(5000);
+await page.screenshot({ path: `${out}/f5-game-over.png` });
+// Near miss slow-mo: aim just above the head.
+await page.getByText('Rematch').click();
+await page.waitForTimeout(1500);
+await shoot(0.5);
+await page.waitForTimeout(1350);
+await page.screenshot({ path: `${out}/f6-near-miss.png` });
+
+// Apple Shot
+await page.goto(base);
+await page.waitForFunction(() => !!window.__ba);
+await page.getByText('Apple Shot').click();
+await page.getByText('Same screen').click();
+await page.waitForTimeout(500);
+await page.screenshot({ path: `${out}/f7-apple-start.png` });
+await shoot(0);
+await page.waitForTimeout(1250);
+await page.screenshot({ path: `${out}/f8-apple-hit.png` });
+console.log(errors.length ? errors.join('\n') : 'no errors', Date.now() - t0);
+await browser.close();

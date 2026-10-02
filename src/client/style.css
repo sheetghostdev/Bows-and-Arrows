@@ -312,10 +312,13 @@ html, body {
   z-index: 4;
   pointer-events: none;
   display: none;
+  white-space: nowrap;
 }
 @media (orientation: portrait) and (pointer: coarse) {
   .rotate-hint { display: block; }
 }
+/* Only nag about rotating while actually playing. */
+.corner[hidden] ~ .rotate-hint { display: none !important; }
 
 @media (max-height: 500px) {
   .panel { padding: 16px; gap: 10px; }

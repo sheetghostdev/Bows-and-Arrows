@@ -274,3 +274,41 @@ export function drawBalloon(ctx: CanvasRenderingContext2D, x: number, y: number,
   ctx.ellipse(x - r * 0.38, y + r * 0.4, r * 0.18, r * 0.3, -0.5, 0, Math.PI * 2);
   ctx.fill();
 }
+
+/** Concentric bullseye facing the camera. `rings` go outside-in. */
+export function drawBullseye(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, rings: string[]) {
+  rings.forEach((c, i) => {
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    ctx.arc(x, y, r * (1 - i / rings.length), 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+/** Ladder target: a bullseye board on a wooden post, ringed in its owner's color. */
+export function drawBoard(ctx: CanvasRenderingContext2D, x: number, y: number, ground: number, r: number, color: string) {
+  ctx.strokeStyle = COLORS.bow;
+  ctx.lineWidth = 0.07;
+  ctx.lineCap = 'round';
+  line(ctx, x, ground, x, y);
+  line(ctx, x - 0.18, ground, x, y - r * 0.6);
+  drawBullseye(ctx, x, y, r, [color, '#ffffff', color, '#ffffff']);
+  ctx.fillStyle = '#ffd166';
+  ctx.beginPath();
+  ctx.arc(x, y, r * 0.18, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/** Moving target: a floating bullseye with its sweep lane drawn faintly behind it. */
+export function drawMover(ctx: CanvasRenderingContext2D, cx: number, laneX: number, y: number, r: number, range: number) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(43,45,66,0.25)';
+  ctx.lineWidth = 0.04;
+  ctx.setLineDash([0.15, 0.15]);
+  line(ctx, laneX - range, y, laneX + range, y);
+  ctx.setLineDash([]);
+  for (const end of [-range, range]) line(ctx, laneX + end, y - 0.12, laneX + end, y + 0.12);
+  ctx.restore();
+  // Three equal rings, matching the scoring bands: outer, middle, bullseye.
+  drawBullseye(ctx, cx, y, r, ['#ffffff', '#e4572e', '#ffd166']);
+}

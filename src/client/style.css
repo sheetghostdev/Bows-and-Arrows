@@ -224,6 +224,14 @@ html, body {
 }
 .seg button.on { background: #fff; color: var(--ink); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); }
 .seg:has(button:disabled) { opacity: 0.7; }
+.seg.modes { display: grid; grid-template-columns: repeat(3, 1fr); }
+.mode-picker { display: flex; flex-direction: column; gap: 6px; }
+.fs-btn {
+  position: fixed;
+  right: calc(10px + var(--safe-right));
+  bottom: calc(10px + var(--safe-bottom));
+  z-index: 11;
+}
 
 .field {
   width: 100%;

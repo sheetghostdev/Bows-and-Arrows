@@ -13,9 +13,14 @@ page.on('pageerror', (e) => errors.push(String(e)));
 const shoot = (yOffset = 0, angle = 38) =>
   page.evaluate(
     ([yOffset, angle]) => {
-      const { bot, local } = window.__ba;
+      const { bot, local, view } = window.__ba;
       const d = local();
       const s = d.state;
+      if (s.targets.some((t) => t.kind === 'mover')) {
+        const phase = view.sweepPhase;
+        d.shoot({ angle, power: bot.solveLead(s, s.turn, angle, phase), phase });
+        return;
+      }
       const t = bot.aimPoint(s, s.turn);
       const power = bot.solvePower(s, s.turn, angle, t.x, t.y + yOffset);
       d.shoot({ angle, power });
@@ -38,9 +43,11 @@ await page.waitForTimeout(1250);
 await page.screenshot({ path: `${out}/f2-headshot.png` });
 await page.waitForTimeout(700);
 await page.screenshot({ path: `${out}/f3-ko.png` });
-await page.waitForTimeout(1500);
+await page.waitForTimeout(900);
+await page.screenshot({ path: `${out}/f3b-ragdoll-settled.png` });
+await page.waitForTimeout(600);
 await page.screenshot({ path: `${out}/f4-round-banner.png` });
-await page.waitForTimeout(4000);
+await page.waitForTimeout(4900);
 // Round 2: headshot ends the match.
 await shoot(0);
 await page.waitForTimeout(5000);
@@ -77,5 +84,26 @@ await page.waitForTimeout(900);
 await page.screenshot({ path: `${out}/f11-balloon-pop.png` });
 await page.waitForTimeout(2600);
 await page.screenshot({ path: `${out}/f12-next-shooter.png` });
+// Ladder
+const modeRun = async (name, prefix) => {
+  await page.goto(base);
+  await page.waitForFunction(() => !!window.__ba);
+  await page.getByText(name, { exact: true }).click();
+  await page.waitForTimeout(150);
+  await page.screenshot({ path: `${out}/${prefix}-menu.png` });
+  await page.getByText('Same screen').click();
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: `${out}/${prefix}-intro.png` });
+  await page.waitForTimeout(2000);
+  await page.screenshot({ path: `${out}/${prefix}-aim.png` });
+  await shoot(0);
+  await page.waitForTimeout(1100);
+  await page.screenshot({ path: `${out}/${prefix}-hit.png` });
+  await page.waitForTimeout(3000);
+  await page.screenshot({ path: `${out}/${prefix}-after.png` });
+};
+await modeRun('Ladder', 'g1');
+await modeRun('Moving Target', 'g2');
+
 console.log(errors.length ? errors.join('\n') : 'no errors', Date.now() - t0);
 await browser.close();

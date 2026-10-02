@@ -14,8 +14,14 @@ Games:
 - **Duel**: best of 3. A headshot kills; three body hits kill.
 - **Apple Shot**: 5 arrows each. Hit their apple for +1, hit *them* for −1. Ties go to sudden-death pairs.
 - **Balloons**: 9 balloons float over the field; take turns popping them, first to 5 wins. Arrows fly on after a pop, so one shot can pop several. Nobody gets shot. Balloons are placed in mirrored pairs so both sides get the same shots.
+- **Ladder**: each player has their own target (ringed in their color). Hit it and it moves further out: 7, 11, 15, 19 m. First to clear all four wins. You can see their target but can't hit it.
+- **Moving Target**: a bullseye sweeps back and forth over midfield; time your release and lead the shot. Bullseye 3, middle ring 2, outer ring 1; first to 8. Both shots of a pair face the same height, sweep and speed.
 
-**Camera.** Each round opens on the whole field for a moment, then zooms in on whoever is shooting; the opponent is off-screen, so distance is judged by feel. The camera follows the arrow, holds where it lands (pulling back to show the target if it's close), then pans to the next shooter. On release, the game fires the aim from 80 ms before your finger lifted, so lifting your thumb doesn't nudge the shot.
+In every points mode both players get the same number of arrows: the win is checked after each pair of shots, and a tie keeps going.
+
+**Knockouts** turn the archer into a ragdoll (Verlet points and sticks, client-side only) that the arrow knocks over, with stuck arrows riding along.
+
+**Camera.** Each round opens on the whole field for a moment, then zooms in on whoever is shooting; the opponent is off-screen, so distance is judged by feel. The camera follows the arrow, holds where it lands (pulling back to show the target if it's close), then pans to the next shooter. Aiming upward tilts the view up so you can see high targets. On release, the game fires the aim from 80 ms before your finger lifted, so lifting your thumb doesn't nudge the shot.
 
 ## Run it
 
@@ -44,6 +50,10 @@ Online play runs on Cloudflare Workers + Durable Objects. The free plan is enoug
 3. `npm run deploy`
 
 Wrangler prints your URL, e.g. `https://bows-and-arrows.<you>.workers.dev`. Open it, hit **Play a friend**, paste the link in Discord. Each redeploy keeps existing rooms. A custom domain can be added in the Cloudflare dashboard (Workers → your worker → Settings → Domains).
+
+## Full screen / app-like
+
+There's a full-screen button where the browser supports it (Android, desktop). On iPhone, open the site in Safari, tap Share → **Add to Home Screen**: it then launches full screen in landscape like an app (`public/manifest.webmanifest`, icons from `scripts/make-icons.mjs`). For a real App Store build, the same web build can be wrapped with Capacitor later.
 
 ## How it works
 

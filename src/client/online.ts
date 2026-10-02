@@ -102,7 +102,7 @@ export class OnlineSession implements Driver {
     if (!m) return;
     this.pendingShot = true;
     clearTimeout(this.aimTimer);
-    this.send({ t: 'shoot', angle: input.angle, power: input.power, seq: m.seq });
+    this.send({ t: 'shoot', angle: input.angle, power: input.power, phase: input.phase, seq: m.seq });
   }
 
   aim(input: ShotInput | null) {

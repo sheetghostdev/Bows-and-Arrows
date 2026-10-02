@@ -27,14 +27,26 @@ export interface LastShot {
   vx: number;
   vy: number;
   wind: number;
+  phase: number;
 }
 
-export interface Balloon {
+export type TargetKind = 'balloon' | 'board' | 'mover';
+
+/** Something on the field to shoot at. Arrows fly through targets (popping or shattering them). */
+export interface Target {
+  kind: TargetKind;
   x: number;
   y: number;
   r: number;
   color: number;
   alive: boolean;
+  /** Only this player's arrows can hit it (Ladder boards); -1 = anyone. */
+  owner: number;
+  /** Ladder: which stage this board is (0-based). */
+  stage: number;
+  /** Moving target: sweeps ±range metres at speed m/s (where it starts is part of each shot). */
+  range: number;
+  speed: number;
 }
 
 export type Phase = 'aim' | 'roundOver' | 'matchOver';
@@ -47,8 +59,10 @@ export interface LastEvent {
   damage: number;
   points: number;
   killed: boolean;
-  /** Balloons popped by this shot. */
+  /** Targets hit by this shot. */
   pops: number;
+  /** Ring hit on a ring-scored target (0 = bullseye), or null. */
+  ring: number | null;
 }
 
 export interface MatchState {
@@ -75,8 +89,8 @@ export interface MatchState {
   windLevel: number;
 
   arrows: StuckArrow[];
-  /** Balloons in the current round (Balloons mode). */
-  balloons: Balloon[];
+  /** Targets on the field this round (Balloons, Ladder, Moving Target). */
+  targets: Target[];
   /** Each player's previous shot this round (for the ghost trail). */
   lastShot: (LastShot | null)[];
 
@@ -95,6 +109,8 @@ export interface ShotRecord {
   vx: number;
   vy: number;
   wind: number;
+  /** Moving target: where it was along its sweep when the arrow left. */
+  phase: number;
   seqBefore: number;
 }
 
@@ -126,7 +142,7 @@ export function createMatch(o: NewMatch): MatchState {
     turn: 0,
     windLevel: 0,
     arrows: [],
-    balloons: [],
+    targets: [],
     lastShot: [null, null],
     phase: 'aim',
     roundWinner: null,
@@ -141,38 +157,80 @@ export function createMatch(o: NewMatch): MatchState {
 
 function setupRound(s: MatchState): void {
   const rng = mulberry32(mix(s.seed, s.round, 0xa11));
-  const { minDistance, maxDistance } = CONFIG.arena;
+  const [minDistance, maxDistance] = modeOf(s).distance ?? [CONFIG.arena.minDistance, CONFIG.arena.maxDistance];
   s.distance = Math.round((minDistance + rng() * (maxDistance - minDistance)) * 10) / 10;
   s.terrain = makeTerrain(rng, s.distance);
   s.hp = [CONFIG.duel.hp, CONFIG.duel.hp];
   s.points = [0, 0];
   s.shots = [0, 0];
   s.arrows = [];
-  s.balloons = makeBalloons(s, rng);
+  s.targets = makeTargets(s, rng);
   s.lastShot = [null, null];
   s.shotInRound = 0;
   s.turn = (s.matchFirst + s.round) % 2;
   s.windLevel = windLevelFor(s);
+  if (modeOf(s).targets === 'mover') s.targets = [moverFor(s)];
   s.phase = 'aim';
   s.roundWinner = null;
   s.lastEvent = null;
+}
+
+const q2 = (v: number) => Math.round(v * 100) / 100;
+
+function makeTargets(s: MatchState, rng: () => number): Target[] {
+  switch (modeOf(s).targets) {
+    case 'balloons':
+      return makeBalloons(s, rng);
+    case 'ladder':
+      return [ladderBoard(s, 0, 0), ladderBoard(s, 1, 0)];
+    case 'mover':
+      return [moverFor(s)];
+    default:
+      return [];
+  }
+}
+
+/** Ladder: each player's board sits at the same distance from them (mirrored), further each stage. */
+function ladderBoard(s: MatchState, owner: number, stage: number): Target {
+  const { stages, radius, height } = CONFIG.ladder;
+  const x = q2(archerX(s, owner) + facingOf(owner) * stages[Math.min(stage, stages.length - 1)]);
+  return { kind: 'board', x, y: q2(groundY(s.terrain, x) + height), r: radius, color: owner, alive: true, owner, stage, range: 0, speed: 0 };
+}
+
+/** Moving target: midfield, re-rolled every pair of shots so both players get the same one. */
+function moverFor(s: MatchState): Target {
+  const m = CONFIG.mover;
+  const r = mulberry32(mix(s.seed, s.round, Math.floor(s.shotInRound / 2), 0x6d));
+  const x = q2(s.distance / 2);
+  const between = (a: number, b: number) => q2(a + r() * (b - a));
+  return {
+    kind: 'mover',
+    x,
+    y: q2(groundY(s.terrain, x) + between(m.minHeight, m.maxHeight)),
+    r: m.radius,
+    color: 0,
+    alive: true,
+    owner: -1,
+    stage: 0,
+    range: between(m.minRange, m.maxRange),
+    speed: between(m.minSpeed, m.maxSpeed),
+  };
 }
 
 /**
  * Balloons come in mirrored pairs (same height, same distance from each archer),
  * plus one in the middle when the count is odd, so neither side gets easier ones.
  */
-function makeBalloons(s: MatchState, rng: () => number): Balloon[] {
-  const n = modeOf(s).balloons;
-  const { radius, minHeight, maxHeight } = CONFIG.balloons;
-  const out: Balloon[] = [];
-  const q2 = (v: number) => Math.round(v * 100) / 100;
+function makeBalloons(s: MatchState, rng: () => number): Target[] {
+  const { count: n, radius, minHeight, maxHeight } = CONFIG.balloons;
+  const out: Target[] = [];
+  const balloon = (x: number, y: number, color: number): Target => ({ kind: 'balloon', x, y, r: radius, color, alive: true, owner: -1, stage: 0, range: 0, speed: 0 });
   const ground = (x: number) => groundY(s.terrain, x);
   const ok = (x: number, y: number) => out.every((b) => (b.x - x) * (b.x - x) + (b.y - y) * (b.y - y) > (radius * 3.2) ** 2);
   const d = s.distance;
   if (n % 2 === 1) {
     const x = q2(d / 2);
-    out.push({ x, y: q2(ground(x) + minHeight + rng() * (maxHeight - minHeight)), r: radius, color: 0, alive: true });
+    out.push(balloon(x, q2(ground(x) + minHeight + rng() * (maxHeight - minHeight)), 0));
   }
   for (let tries = 0; out.length < n && tries < 400; tries++) {
     // Somewhere between 20% and 50% of the way across (mirrored to the other half).
@@ -180,7 +238,7 @@ function makeBalloons(s: MatchState, rng: () => number): Balloon[] {
     const y = q2(Math.max(ground(x), ground(d - x)) + minHeight + rng() * (maxHeight - minHeight));
     if (!ok(x, y) || !ok(q2(d - x), y)) continue;
     const color = out.length % 5;
-    out.push({ x, y, r: radius, color, alive: true }, { x: q2(d - x), y, r: radius, color: (color + 2) % 5, alive: true });
+    out.push(balloon(x, y, color), balloon(q2(d - x), y, (color + 2) % 5));
   }
   return out.slice(0, n);
 }
@@ -218,46 +276,65 @@ export function launchFor(s: MatchState, shooter: number, vx: number, vy: number
   };
 }
 
-/** What a shot from `shooter` can hit: the opponent (and their apple). Your own arrows never hit you. */
-export function targetsFor(s: MatchState, shooter: number): Hitbox[] {
+/** What a shot from `shooter` can hit: field targets, then the opponent (and their apple). Your own arrows never hit you. */
+export function targetsFor(s: MatchState, shooter: number, phase = 0): Hitbox[] {
   const o = 1 - shooter;
   const mode = modeOf(s);
   const boxes: Hitbox[] = [];
-  s.balloons.forEach((b, id) => {
-    if (b.alive) boxes.push({ ax: b.x, ay: b.y, bx: b.x, by: b.y, r: b.r, zone: 'balloon', owner: -1, pierce: true, id });
+  s.targets.forEach((t, id) => {
+    if (!t.alive || (t.owner >= 0 && t.owner !== shooter)) return;
+    const h: Hitbox = { ax: t.x, ay: t.y, bx: t.x, by: t.y, r: t.r, zone: 'target', owner: -1, pierce: true, id };
+    if (t.kind === 'mover') h.move = { range: t.range, speed: t.speed, phase };
+    boxes.push(h);
   });
   if (mode.hitArchers) boxes.push(...archerHitboxes(o, archerX(s, o), archerGround(s, o), mode.apple));
   return boxes;
 }
 
-export function flightFor(s: MatchState, shooter: number, vx: number, vy: number, wind: number): Flight {
-  return simulate(launchFor(s, shooter, vx, vy, wind), s.terrain, targetsFor(s, shooter));
+export function flightFor(s: MatchState, shooter: number, vx: number, vy: number, wind: number, phase = 0): Flight {
+  return simulate(launchFor(s, shooter, vx, vy, wind), s.terrain, targetsFor(s, shooter, phase));
+}
+
+/** Length of one full back-and-forth of the moving target (phases wrap at this). */
+export function sweepPeriod(s: MatchState): number {
+  const m = s.targets.find((t) => t.kind === 'mover');
+  return m ? 4 * m.range : 0;
 }
 
 /** Turn an aim input into a ShotRecord for the current shooter (no state change). */
 export function prepareShot(s: MatchState, input: ShotInput): ShotRecord {
-  const v = launchVelocity(clampInput(input), facingOf(s.turn));
-  return { shooter: s.turn, vx: v.vx, vy: v.vy, wind: windAccel(s.windLevel, s.turn), seqBefore: s.seq };
+  const clean = clampInput(input);
+  const v = launchVelocity(clean, facingOf(s.turn));
+  const period = sweepPeriod(s);
+  const phase = period > 0 ? Math.round(((clean.phase ?? 0) % period) * 100) / 100 : 0;
+  return { shooter: s.turn, vx: v.vx, vy: v.vy, wind: windAccel(s.windLevel, s.turn), phase, seqBefore: s.seq };
 }
 
 /** Authoritative resolution of a shot. Returns a new state; `s` is untouched. */
 export function applyShot(prev: MatchState, input: ShotInput): { state: MatchState; shot: ShotRecord; flight: Flight } {
   if (prev.phase !== 'aim') throw new Error('not aiming');
   const shot = prepareShot(prev, input);
-  const flight = flightFor(prev, shot.shooter, shot.vx, shot.vy, shot.wind);
+  const flight = flightFor(prev, shot.shooter, shot.vx, shot.vy, shot.wind, shot.phase);
   const s = structuredClone(prev);
   const shooter = shot.shooter;
   const imp = flight.impact;
-  const event: LastEvent = { kind: 'shot', shooter, zone: imp.zone, damage: 0, points: 0, killed: false, pops: 0 };
+  const event: LastEvent = { kind: 'shot', shooter, zone: imp.zone, damage: 0, points: 0, killed: false, pops: 0, ring: null };
+  const mode = modeOf(s);
 
-  const popRule = modeOf(s).zones.balloon;
   for (const pop of flight.pops) {
-    s.balloons[pop.id].alive = false;
-    event.pops++;
-    if (popRule?.points) {
-      s.points[shooter] += popRule.points;
-      event.points += popRule.points;
+    const t = s.targets[pop.id];
+    let pts = mode.zones.target?.points ?? 0;
+    if (mode.rings) {
+      const ring = Math.min(mode.rings.length - 1, Math.floor(pop.center / (t.r / mode.rings.length)));
+      pts = mode.rings[ring];
+      event.ring = ring;
     }
+    if (t.kind === 'balloon') t.alive = false;
+    else if (t.kind === 'board') s.targets[pop.id] = ladderBoard(s, t.owner, t.stage + 1);
+    event.pops++;
+    event.zone = 'target';
+    s.points[shooter] += pts;
+    event.points += pts;
   }
 
   if (imp.kind === 'ground') {
@@ -287,7 +364,7 @@ export function applyShot(prev: MatchState, input: ShotInput): { state: MatchSta
     }
   }
 
-  s.lastShot[shooter] = { vx: shot.vx, vy: shot.vy, wind: shot.wind };
+  s.lastShot[shooter] = { vx: shot.vx, vy: shot.vy, wind: shot.wind, phase: shot.phase };
   s.lastEvent = event;
   finishTurn(s);
   return { state: s, shot, flight };
@@ -297,7 +374,7 @@ export function applyShot(prev: MatchState, input: ShotInput): { state: MatchSta
 export function skipTurn(prev: MatchState): MatchState {
   if (prev.phase !== 'aim') return prev;
   const s = structuredClone(prev);
-  s.lastEvent = { kind: 'skip', shooter: s.turn, zone: null, damage: 0, points: 0, killed: false, pops: 0 };
+  s.lastEvent = { kind: 'skip', shooter: s.turn, zone: null, damage: 0, points: 0, killed: false, pops: 0, ring: null };
   finishTurn(s);
   return s;
 }
@@ -314,9 +391,11 @@ function finishTurn(s: MatchState): void {
   }
   const target = mode.pointsToWin;
   if (target !== null) {
+    // Both players always get the same number of arrows: the win is checked when a pair completes.
     const leader = s.points[0] === s.points[1] ? -1 : s.points[0] > s.points[1] ? 0 : 1;
-    const allPopped = mode.balloons > 0 && s.balloons.every((b) => !b.alive);
-    if (leader >= 0 && (s.points[leader] >= target || allPopped)) return endRound(s, leader, 'points');
+    const nothingLeft = mode.targets === 'balloons' && s.targets.every((b) => !b.alive);
+    const pairDone = s.shots[0] === s.shots[1];
+    if (leader >= 0 && (nothingLeft || (pairDone && s.points[leader] >= target))) return endRound(s, leader, 'points');
   }
   const n = mode.shotsPerPlayer;
   if (n !== null && s.shots[0] >= n && s.shots[0] === s.shots[1] && s.points[0] !== s.points[1]) {
@@ -324,6 +403,7 @@ function finishTurn(s: MatchState): void {
   }
   s.turn = 1 - s.turn;
   s.windLevel = windLevelFor(s);
+  if (mode.targets === 'mover' && s.shotInRound % 2 === 0) s.targets = [moverFor(s)];
 }
 
 function endRound(s: MatchState, winner: number, reason: EndReason): void {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aimPoint, solvePower } from '../src/shared/bot';
+import { aimPoint, solveLead, solvePower } from '../src/shared/bot';
 import { CONFIG } from '../src/shared/config';
 import { applyShot, createMatch, flightFor, nextRound, skipTurn, type MatchState } from '../src/shared/match';
 import { BODY } from '../src/shared/body';
@@ -94,10 +94,10 @@ describe('balloons mode', () => {
   it('places mirrored balloons so both sides get the same shots', () => {
     for (let seed = 1; seed < 50; seed++) {
       const s = createMatch({ seed, modeId: 'balloons', windOn: true, players });
-      expect(s.balloons.length).toBe(CONFIG.balloons.count);
+      expect(s.targets.length).toBe(CONFIG.balloons.count);
       const key = (x: number, y: number) => `${x.toFixed(2)},${y.toFixed(2)}`;
-      const set = new Set(s.balloons.map((b) => key(b.x, b.y)));
-      for (const b of s.balloons) expect(set.has(key(Math.round((s.distance - b.x) * 100) / 100, b.y))).toBe(true);
+      const set = new Set(s.targets.map((b) => key(b.x, b.y)));
+      for (const b of s.targets) expect(set.has(key(Math.round((s.distance - b.x) * 100) / 100, b.y))).toBe(true);
     }
   });
 
@@ -125,15 +125,76 @@ describe('balloons mode', () => {
     const s = createMatch({ seed: 3, modeId: 'balloons', windOn: false, players });
     s.terrain = { x0: -80, step: 5, h: new Array(60).fill(0) };
     s.turn = 0;
-    s.balloons = [];
+    s.targets = [];
     // Put two balloons right on the path of a known shot.
     const input = { angle: 30, power: 0.7 };
     const path = applyShot(s, input).flight.path;
-    const at = (i: number) => ({ x: path[i * 2], y: path[i * 2 + 1], r: 0.32, color: 0, alive: true });
-    s.balloons = [at(40), at(80)];
+    const at = (i: number) => ({ kind: 'balloon' as const, x: path[i * 2], y: path[i * 2 + 1], r: 0.32, color: 0, alive: true, owner: -1, stage: 0, range: 0, speed: 0 });
+    s.targets = [at(40), at(80)];
     const r = applyShot(s, input);
     expect(r.flight.pops.map((p) => p.id)).toEqual([0, 1]);
     expect(r.state.points[0]).toBe(2);
-    expect(r.state.balloons.every((b) => !b.alive)).toBe(true);
+    expect(r.state.targets.every((b) => !b.alive)).toBe(true);
+  });
+});
+
+describe('ladder mode', () => {
+  it('your board moves further out when you hit it; theirs stays; first to clear all wins', () => {
+    let s = createMatch({ seed: 8, modeId: 'ladder', windOn: false, players });
+    const first = s.turn;
+    const mine = () => s.targets.find((t) => t.owner === first)!;
+    const theirs = () => s.targets.find((t) => t.owner === 1 - first)!;
+    const theirX = theirs().x;
+    const dist = () => Math.abs(mine().x - (first === 0 ? 0 : s.distance));
+    expect(dist()).toBeCloseTo(CONFIG.ladder.stages[0], 1);
+    for (let stage = 1; stage <= CONFIG.ladder.stages.length; stage++) {
+      s = applyShot(s, perfect(s)).state;
+      expect(s.lastEvent!.pops).toBe(1);
+      expect(s.points[first]).toBe(stage);
+      if (s.phase !== 'aim') break;
+      // Opponent misses (their board is untouched by our arrows).
+      s = applyShot(s, miss).state;
+      expect(theirs().x).toBe(theirX);
+      if (stage < CONFIG.ladder.stages.length) expect(dist()).toBeCloseTo(CONFIG.ladder.stages[stage], 1);
+    }
+    expect(s.phase).toBe('matchOver');
+    expect(s.matchWinner).toBe(first);
+  });
+
+  it('the second player always gets a reply before the win is decided', () => {
+    let s = createMatch({ seed: 8, modeId: 'ladder', windOn: false, players });
+    const first = s.turn;
+    s.points[first] = CONFIG.ladder.stages.length - 1;
+    s.points[1 - first] = CONFIG.ladder.stages.length - 1;
+    s = applyShot(s, perfect(s)).state; // first player clears the last board
+    expect(s.phase).toBe('aim'); // ...but the other gets to answer
+    s = applyShot(s, perfect(s)).state; // and clears theirs too: tie, play on
+    expect(s.phase).toBe('aim');
+  });
+});
+
+describe('moving target mode', () => {
+  it('scores by ring, and the same release phase always gives the same result', () => {
+    const s = createMatch({ seed: 4, modeId: 'mover', windOn: false, players });
+    const phase = 1.25;
+    const power = solveLead(s, s.turn, 40, phase)!;
+    const a = applyShot(s, { angle: 40, power, phase });
+    const b = applyShot(s, { angle: 40, power, phase });
+    expect(JSON.stringify(a.state)).toBe(JSON.stringify(b.state));
+    expect(a.state.lastEvent!.pops).toBe(1);
+    expect(a.state.lastEvent!.ring).toBe(0);
+    expect(a.state.points[s.turn]).toBe(CONFIG.mover.rings[0]);
+    // Released at a different point in the sweep, the same aim misses or scores less.
+    const late = applyShot(s, { angle: 40, power, phase: phase + 1.5 });
+    expect(late.state.points[s.turn]).toBeLessThan(CONFIG.mover.rings[0]);
+  });
+
+  it('both shots of a pair face the same target', () => {
+    let s = createMatch({ seed: 5, modeId: 'mover', windOn: true, players });
+    const t0 = JSON.stringify(s.targets);
+    s = applyShot(s, miss).state;
+    expect(JSON.stringify(s.targets)).toBe(t0);
+    s = applyShot(s, miss).state;
+    expect(JSON.stringify(s.targets)).not.toBe(t0);
   });
 });

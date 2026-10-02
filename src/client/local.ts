@@ -68,7 +68,13 @@ export class LocalDriver implements Driver {
         const e = 1 - Math.pow(1 - k, 2);
         this.view.setRemoteAim(bot, { angle: input.angle, power: input.power * e });
         if (k < 1) this.later(tick, 16);
-        else this.later(() => this.state.seq === seq && this.fire(input), 180);
+        else
+          this.later(() => {
+            if (this.state.seq !== seq) return;
+            // Moving target: re-solve for where it actually is at the moment of release.
+            const moving = this.state.targets.some((t) => t.kind === 'mover');
+            this.fire(moving ? botShot(this.state, bot, this.botAngle, this.view.sweepPhase) : input);
+          }, 180);
       };
       tick();
     }, CONFIG.bot.thinkMs);

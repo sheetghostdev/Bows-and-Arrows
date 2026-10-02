@@ -27,7 +27,7 @@ export type ClientMsg =
   | { t: 'hello'; token: string; name: string; color: string }
   | { t: 'settings'; modeId: ModeId; windOn: boolean }
   | { t: 'start' }
-  | { t: 'shoot'; angle: number; power: number; seq: number }
+  | { t: 'shoot'; angle: number; power: number; phase?: number; seq: number }
   | { t: 'aim'; angle: number; power: number }
   | { t: 'aimOff' }
   | { t: 'rematch' }

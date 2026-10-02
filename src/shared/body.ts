@@ -2,7 +2,7 @@
  * Stick-man geometry in archer-local space: feet at (0,0), +x = facing direction, +y = up.
  * The renderer draws the idle pose from these same numbers, so what you see is what you hit.
  */
-export type Zone = 'head' | 'body' | 'apple' | 'balloon';
+export type Zone = 'head' | 'body' | 'apple' | 'target';
 
 export const BODY = {
   hip: { x: 0, y: 0.92 },
@@ -32,12 +32,29 @@ export interface Hitbox {
   by: number;
   r: number;
   zone: Zone;
-  /** Archer index, or -1 for things that belong to nobody (balloons). */
+  /** Archer index, or -1 for things that belong to nobody (targets). */
   owner: number;
-  /** Arrows fly straight through this (and pop it) instead of stopping. */
+  /** Arrows fly straight through this (popping/shattering it) instead of stopping. */
   pierce?: boolean;
-  /** Which balloon, for pierce targets. */
+  /** Which target, for pierce targets. */
   id?: number;
+  /** Slides back and forth horizontally while the arrow flies (see sweepOffset). */
+  move?: Sweep;
+}
+
+/** A horizontal back-and-forth: offset in [-range, range], moving at `speed`, starting at `phase` along the cycle. */
+export interface Sweep {
+  range: number;
+  speed: number;
+  phase: number;
+}
+
+/** Triangle-wave offset after `t` seconds. Plain arithmetic, so it's identical everywhere. */
+export function sweepOffset(m: Sweep, t: number): number {
+  const period = 4 * m.range;
+  const u = m.phase + t * m.speed;
+  const v = u - Math.floor(u / period) * period;
+  return v < 2 * m.range ? v - m.range : 3 * m.range - v;
 }
 
 export const facingOf = (player: number): 1 | -1 => (player === 0 ? 1 : -1);

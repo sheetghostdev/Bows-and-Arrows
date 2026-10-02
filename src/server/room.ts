@@ -240,7 +240,8 @@ export class MatchRoom extends DurableObject<Env> {
     const m = r.match;
     if (!m || m.phase !== 'aim' || r.paused || m.turn !== seat || msg.seq !== m.seq) return false;
     if (!Number.isFinite(msg.angle) || !Number.isFinite(msg.power) || msg.power < CONFIG.aim.minPower) return false;
-    const { state, shot, flight } = applyShot(m, { angle: +msg.angle, power: +msg.power });
+    const phase = Number.isFinite(msg.phase) ? +msg.phase! : undefined;
+    const { state, shot, flight } = applyShot(m, { angle: +msg.angle, power: +msg.power, phase });
     // How long clients spend showing this shot before the next turn starts.
     const animMs =
       flight.impact.step * CONFIG.physics.dt * 1000 + CONFIG.feel.impactHoldMs + CONFIG.feel.headshotFreezeMs + (state.lastEvent?.killed ? 600 : 0) + 900;

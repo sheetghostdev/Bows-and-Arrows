@@ -61,6 +61,30 @@ export const CONFIG = {
     maxHeight: 7,
   },
 
+  ladder: {
+    /** Each player's target distances, in order (metres from the shooter). */
+    stages: [7, 11, 15, 19],
+    radius: 0.32,
+    /** Board centre height above the ground. */
+    height: 1.3,
+    distance: [22, 24] as [number, number],
+  },
+
+  mover: {
+    /** Points by ring, bullseye first. Rings are equal-width bands of the radius. */
+    rings: [3, 2, 1],
+    radius: 0.4,
+    pointsToWin: 8,
+    /** Per pair of shots: how high it flies, how far it sweeps each way, how fast. */
+    minHeight: 1.5,
+    maxHeight: 3,
+    minRange: 1.5,
+    maxRange: 3.5,
+    minSpeed: 1.5,
+    maxSpeed: 3.5,
+    distance: [12, 18] as [number, number],
+  },
+
   wind: {
     /**
      * Horizontal acceleration at strength 10. Kept small enough that full power
@@ -95,6 +119,8 @@ export const CONFIG = {
     slowMoWindow: 0.07,
     /** While aiming, the archer fills this much of the screen height (the opponent is off-screen). */
     closeUp: 0.3,
+    /** Aiming straight up lifts the view by this fraction of the screen height (less for lower angles). */
+    aimLift: 0.22,
     /** Each round opens on the whole field for this long, then zooms to the shooter. */
     introSeconds: 1.8,
     /** Camera zoom while following the arrow, relative to the close-up. */

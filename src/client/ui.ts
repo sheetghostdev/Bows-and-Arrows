@@ -1,7 +1,7 @@
 import { facingOf } from '../shared/body';
 import { CONFIG, PALETTE } from '../shared/config';
 import { modeOf, type MatchState } from '../shared/match';
-import { MODE_LIST, type ModeId } from '../shared/modes';
+import { MODE_LIST, MODES, type ModeId } from '../shared/modes';
 import { sfx } from './audio';
 
 type Child = Node | string | null | undefined | false;
@@ -84,7 +84,7 @@ export class Hud {
         score = el('span', { class: 'pips' });
         for (let i = 0; i < mode.roundsToWin; i++) score.append(el('span', { class: `pip${i < s.roundWins[p] ? ' on' : ''}` }));
       } else {
-        score = el('span', { class: 'pts' }, String(s.points[p]));
+        score = el('span', { class: 'pts' }, mode.pointsToWin ? `${s.points[p]}/${mode.pointsToWin}` : String(s.points[p]));
       }
       const extra = mode.shotsPerPlayer ? el('span', { class: 'muted' }, `${Math.max(0, mode.shotsPerPlayer - s.shots[p])}➶`) : null;
       // The opponent is usually off-screen, so their health lives up here too.
@@ -143,13 +143,20 @@ export function segmented<T extends string>(options: { value: T; label: string }
   return root;
 }
 
+/** Mode buttons in a wrapping grid, with the chosen mode's one-line rules underneath. */
 export function modePicker(value: ModeId, onChange: (m: ModeId) => void, disabled = false) {
-  return segmented(
+  const blurb = el('p', { class: 'muted' }, MODES[value].blurb);
+  const seg = segmented(
     MODE_LIST.map((m) => ({ value: m.id, label: m.name })),
     value,
-    onChange,
+    (m) => {
+      blurb.textContent = MODES[m].blurb;
+      onChange(m);
+    },
     disabled,
   );
+  seg.classList.add('modes');
+  return el('div', { class: 'mode-picker' }, seg, blurb);
 }
 
 export function windPicker(value: boolean, onChange: (on: boolean) => void, disabled = false) {
@@ -188,6 +195,8 @@ export function colorPicker(value: string, taken: string | null, onChange: (c: s
 }
 
 export const ICONS = {
+  fullscreen: '<svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  exitFullscreen: '<svg viewBox="0 0 24 24"><path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   home: '<svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7M6 10v9h12v-9" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   sound: '<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
   muted: '<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16 9l5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',

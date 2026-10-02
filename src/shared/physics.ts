@@ -1,11 +1,12 @@
 import { CONFIG } from './config';
-import { distToSegment, type Hitbox, type Zone } from './body';
+import { distToSegment, sweepOffset, type Hitbox, type Zone } from './body';
 import { groundY, type Terrain } from './terrain';
 
-/** What a player sends: angle in degrees relative to facing, power 0..1. */
+/** What a player sends: angle in degrees relative to facing, power 0..1, and (moving target) where it was on release. */
 export interface ShotInput {
   angle: number;
   power: number;
+  phase?: number;
 }
 
 export interface Launch {
@@ -37,6 +38,8 @@ export interface Pop {
   x: number;
   y: number;
   step: number;
+  /** Closest the arrow got to the target's centre while passing through (for ring scoring). */
+  center: number;
 }
 
 export interface Flight {
@@ -55,7 +58,9 @@ export function clampInput(input: ShotInput): ShotInput {
   const { minAngle, maxAngle } = CONFIG.aim;
   const angle = q(Math.min(maxAngle, Math.max(minAngle, input.angle)), 10);
   const power = q(Math.min(1, Math.max(0, input.power)), 1000);
-  return { angle, power };
+  const out: ShotInput = { angle, power };
+  if (input.phase !== undefined && Number.isFinite(input.phase)) out.phase = q(Math.max(0, input.phase), 100);
+  return out;
 }
 
 /**
@@ -74,8 +79,8 @@ export function launchVelocity(input: ShotInput, facing: 1 | -1): { vx: number; 
  * Collision is tested at `substeps` points along each step so fast arrows can't skip a head.
  * Pierce targets (balloons) are popped and the arrow keeps going.
  */
-export function simulate(launch: Launch, terrain: Terrain, allTargets: Hitbox[]): Flight {
-  let targets = allTargets;
+export function simulate(launch: Launch, terrain: Terrain, targets: Hitbox[]): Flight {
+  const hitIds = new Map<number, Pop>();
   const { dt, substeps, gravity, maxFlightSeconds } = CONFIG.physics;
   const maxSteps = Math.ceil(maxFlightSeconds / dt);
   let x = launch.x;
@@ -95,11 +100,19 @@ export function simulate(launch: Launch, terrain: Terrain, allTargets: Hitbox[])
       const t = s / substeps;
       const px = x + (nx - x) * t;
       const py = y + (ny - y) * t;
+      const time = (step - 1 + t) * dt;
       for (const h of targets) {
-        const d = distToSegment(px, py, h) - h.r;
+        const center = distToSegment(h.move ? px - sweepOffset(h.move, time) : px, py, h);
+        const d = center - h.r;
         if (d <= 0 && h.pierce) {
-          pops.push({ id: h.id ?? -1, x: px, y: py, step });
-          targets = targets.filter((t) => t !== h);
+          const id = h.id ?? -1;
+          const seen = hitIds.get(id);
+          if (seen) seen.center = Math.min(seen.center, center);
+          else {
+            const pop = { id, x: px, y: py, step, center };
+            hitIds.set(id, pop);
+            pops.push(pop);
+          }
           continue;
         }
         if (d <= 0) {

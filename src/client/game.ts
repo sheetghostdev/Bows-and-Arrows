@@ -1,11 +1,12 @@
-import { BODY, facingOf } from '../shared/body';
+import { BODY, facingOf, sweepOffset } from '../shared/body';
 import { CONFIG } from '../shared/config';
-import { archerGround, archerX, flightFor, modeOf, windAccel, type MatchState, type ShotRecord } from '../shared/match';
+import { archerGround, archerX, flightFor, modeOf, windAccel, type MatchState, type ShotRecord, type Target } from '../shared/match';
 import { clampInput, type Flight, type ShotInput } from '../shared/physics';
 import { groundY } from '../shared/terrain';
 import { sfx } from './audio';
 import { Camera } from './camera';
-import { ARROW_LEN, BALLOON_COLORS, BURY, drawArcher, drawArrow, drawBalloon, drawFlag, idlePose, type ArcherPose } from './draw';
+import { ARROW_LEN, BALLOON_COLORS, BURY, drawArcher, drawArrow, drawBalloon, drawBoard, drawFlag, drawMover, idlePose, type ArcherPose } from './draw';
+import { Ragdoll } from './ragdoll';
 import { Fx } from './fx';
 import { prefs } from './prefs';
 
@@ -40,7 +41,7 @@ interface ActiveShot {
   hold: number;
   slowmo: { from: number; to: number } | null;
   wispTimer: number;
-  /** Index of the next balloon pop to play. */
+  /** Index of the next target hit to play. */
   popIdx: number;
 }
 
@@ -75,7 +76,10 @@ export class GameView {
   private cam = new Camera();
   private fx = new Fx();
   private poses: ArcherPose[] = [idlePose(), idlePose()];
-  private falling = [false, false];
+  /** Knocked-out archers become ragdolls until the next round. */
+  private ragdolls: (Ragdoll | null)[] = [null, null];
+  /** Where the moving target is along its sweep (advances while nobody's arrow is flying). */
+  private sweepU = 0;
   private remoteAim: (ShotInput | null)[] = [null, null];
   private drag: Drag | null = null;
   private freeze = 0;
@@ -143,6 +147,11 @@ export class GameView {
     this.remoteAim[player] = input;
   }
 
+  /** Where the moving target is right now (the bot fires with this, like a player would). */
+  get sweepPhase(): number {
+    return this.sweepU;
+  }
+
   /** True when the view has caught up with everything it was given. */
   get settled(): boolean {
     return !this.active && this.queue.length === 0;
@@ -158,7 +167,7 @@ export class GameView {
     this.state = s;
     if (!prev || prev.round !== s.round || prev.seed !== s.seed) {
       this.poses = [idlePose(), idlePose()];
-      this.falling = [false, false];
+      this.ragdolls = [null, null];
       this.apples = [true, true];
       this.fx.clear();
       this.ghost = null;
@@ -194,7 +203,7 @@ export class GameView {
       this.setState(after);
       return;
     }
-    const flight = flightFor(s, shot.shooter, shot.vx, shot.vy, shot.wind);
+    const flight = flightFor(s, shot.shooter, shot.vx, shot.vy, shot.wind, shot.phase);
     const imp = flight.impact;
     const near = flight.nearest;
     const missed = imp.kind === 'ground' || imp.kind === 'none';
@@ -251,12 +260,26 @@ export class GameView {
         if (ev?.damage) this.fx.text(imp.x, imp.y + 0.5, `-${ev.damage}`, '#ffffff', 30);
         if (ev?.points) this.fx.text(imp.x, imp.y + 0.5, `${ev.points > 0 ? '+' : ''}${ev.points}`, '#b3261e', 34);
       }
-      if (ev?.killed) {
-        this.falling[o] = true;
-        a.hold += 0.6;
-      }
+      if (ev?.killed) a.hold += 0.9;
     }
     this.setState(a.after);
+    if (ev?.killed && imp.owner !== null) {
+      const o = imp.owner;
+      this.ragdolls[o] = new Ragdoll(
+        archerX(s, o),
+        archerGround(s, o),
+        facingOf(o),
+        this.poses[o],
+        s.arrows.filter((x) => x.owner === o).map((x) => ({ a: x, color: s.players[x.shooter].color })),
+        { x: imp.x, y: imp.y, vx: imp.vx, vy: imp.vy },
+        s.terrain,
+      );
+    }
+  }
+
+  /** The moving target this round, if any. */
+  private mover(): Target | null {
+    return this.state?.targets.find((t) => t.kind === 'mover') ?? null;
   }
 
   // ---------------------------------------------------------------- input
@@ -301,6 +324,8 @@ export class GameView {
     const input = this.dragInput(d);
     this.drag = null;
     this.lastCreak = 0;
+    // Moving target: the shot carries where the target was at the moment of release.
+    if (this.mover()) input.phase = this.sweepU;
     if (input.power >= CONFIG.aim.minPower && this.canAim()) this.driver?.shoot(input);
     else this.driver?.aim?.(null);
   }
@@ -341,8 +366,11 @@ export class GameView {
     }
     if (this.intro > 0 && this.settled) this.intro -= rdt;
     if (this.drag && !this.canAim()) this.cancelDrag();
+    const m = this.mover();
+    if (m && !this.active) this.sweepU = (this.sweepU + rdt * m.speed) % (4 * m.range);
     this.updateShot(gdt, rdt);
     this.updatePoses(rdt);
+    for (const r of this.ragdolls) r?.update(gdt);
     this.fx.update(gdt);
     this.fade = Math.max(0, this.fade - rdt * 2.5);
     this.aimCamera();
@@ -375,12 +403,8 @@ export class GameView {
       }
       while (a.popIdx < a.flight.pops.length && a.flight.pops[a.popIdx].step <= a.t / DT) {
         const pop = a.flight.pops[a.popIdx++];
-        const b = this.state?.balloons[pop.id];
-        const color = BALLOON_COLORS[(b?.color ?? 0) % BALLOON_COLORS.length];
-        this.fx.burst(pop.x, pop.y, 18, color, 4, { gravity: 3 });
-        this.fx.text(pop.x, pop.y + 0.6, '+1', '#3fa34d', 34);
-        this.cam.shake += CONFIG.feel.shakeBody * 0.6;
-        sfx.pop();
+        const t = this.state?.targets[pop.id];
+        if (t) this.targetHit(t, pop.x, pop.y, pop.center);
       }
       const tp = this.tip(a);
       sfx.whoosh(Math.min(1, Math.hypot(tp.vx, tp.vy) / CONFIG.aim.maxSpeed));
@@ -406,8 +430,46 @@ export class GameView {
       }
     } else {
       a.hold -= rdt;
-      if (a.hold <= 0) this.active = null;
+      if (a.hold <= 0) {
+        // The moving target carries on from where it was when the arrow landed.
+        const m = this.mover();
+        if (m) this.sweepU = (a.shot.phase + a.flight.impact.step * DT * m.speed) % (4 * m.range);
+        this.active = null;
+      }
     }
+  }
+
+  /** Effects for an arrow passing through a field target. */
+  private targetHit(t: Target, x: number, y: number, center: number) {
+    const s = this.state!;
+    const rings = modeOf(s).rings;
+    if (t.kind === 'balloon') {
+      this.fx.burst(x, y, 18, BALLOON_COLORS[t.color % BALLOON_COLORS.length], 4, { gravity: 3 });
+      this.fx.text(x, y + 0.6, '+1', '#3fa34d', 34);
+      sfx.pop();
+    } else if (t.kind === 'board') {
+      this.fx.burst(t.x, t.y, 14, s.players[t.owner].color, 3.5);
+      this.fx.burst(t.x, t.y, 10, '#ffffff', 3);
+      this.fx.text(t.x, t.y + 0.7, t.stage + 1 >= CONFIG.ladder.stages.length ? 'CLEARED!' : 'Next!', '#3fa34d', 32);
+      sfx.apple();
+    } else if (rings) {
+      const ring = Math.min(rings.length - 1, Math.floor(center / (t.r / rings.length)));
+      this.fx.burst(x, y, 14, ring === 0 ? '#ffd166' : '#e4572e', 3.5);
+      if (ring === 0) {
+        this.fx.text(x, y + 0.9, 'BULLSEYE!', '#ffffff', 38, 1.4);
+        this.freeze = CONFIG.feel.headshotFreezeMs / 1000;
+        sfx.headshot();
+      } else sfx.apple();
+      this.fx.text(x, y - 0.55, `+${rings[ring]}`, '#3fa34d', 30);
+    }
+    this.cam.shake += CONFIG.feel.shakeBody * 0.6;
+  }
+
+  /** Moving target's current offset: replaying the flight if one is in the air, otherwise the live sweep. */
+  private moverOffset(t: Target): number {
+    const a = this.active;
+    const sweep = { range: t.range, speed: t.speed, phase: a ? a.shot.phase : this.sweepU };
+    return sweepOffset(sweep, a ? Math.min(a.t, a.flight.impact.step * DT) : 0);
   }
 
   private updatePoses(rdt: number) {
@@ -427,8 +489,7 @@ export class GameView {
       }
       pose.recoil = Math.max(0, pose.recoil - rdt * 3.2);
       pose.flinch = Math.max(0, pose.flinch - rdt * 3);
-      if (this.falling[p]) pose.fall = Math.min(1, pose.fall + rdt / 0.75);
-      pose.nocked = s.phase === 'aim' && s.turn === p && this.settled && pose.fall === 0;
+      pose.nocked = s.phase === 'aim' && s.turn === p && this.settled && !this.ragdolls[p];
     }
   }
 
@@ -463,7 +524,17 @@ export class GameView {
     if (!s) return;
     const a = this.active;
     if (!a) {
+      const down = this.ragdolls.findIndex((r) => r);
+      if (this.interactive && s.phase !== 'aim' && down >= 0) {
+        // Knockout: stay close on the fallen archer while the result sinks in.
+        const v = this.closeView(down);
+        this.cam.setTarget(this.ragdolls[down]!.center.x, v.y, v.zoom);
+        return;
+      }
       const v = !this.interactive || this.intro > 0 || s.phase !== 'aim' ? this.wideView() : this.closeView(s.turn);
+      // Aiming up tilts the view up (without losing the archer), so you can see high targets.
+      const aim = this.drag && this.drag.player === s.turn ? this.dragInput(this.drag) : this.remoteAim[s.turn];
+      if (aim && this.intro <= 0 && s.phase === 'aim') v.y += Math.max(0, Math.sin((aim.angle * Math.PI) / 180)) * CONFIG.feel.aimLift * (this.h / v.zoom);
       this.cam.setTarget(v.x, v.y, v.zoom);
       return;
     }
@@ -541,12 +612,24 @@ export class GameView {
 
     // Wind flag (shows the wind for the shot being taken right now)
     const windWorld = s.windOn ? windAccel(s.windLevel, s.turn) / CONFIG.wind.maxAccel : 0;
-    if (s.windOn) drawFlag(ctx, s.distance / 2, groundY(s.terrain, s.distance / 2), this.active ? this.active.shot.wind / CONFIG.wind.maxAccel : windWorld, this.time);
+    // One flag just behind each archer, so it's in view during the close-up and never in the line of fire.
+    if (s.windOn) {
+      const wind = this.active ? this.active.shot.wind / CONFIG.wind.maxAccel : windWorld;
+      for (const p of [0, 1]) {
+        const fx = archerX(s, p) - facingOf(p) * 1.7;
+        drawFlag(ctx, fx, groundY(s.terrain, fx), wind, this.time + p);
+      }
+    }
 
     // Archers
     const mode = modeOf(s);
     const a0 = this.active;
     for (const p of [0, 1]) {
+      const rag = this.ragdolls[p];
+      if (rag) {
+        rag.draw(ctx, s.players[p].color);
+        continue;
+      }
       drawArcher(ctx, {
         x: archerX(s, p),
         ground: archerGround(s, p),
@@ -557,12 +640,15 @@ export class GameView {
         arrows: s.arrows.filter((a) => a.owner === p).map((a) => ({ a, color: s.players[a.shooter].color })),
       });
     }
-    // Balloons (hide the ones this flight has already popped)
-    if (s.balloons.length) {
-      const popped = new Set<number>();
-      if (a0 && !a0.impacted) for (const pop of a0.flight.pops) if (pop.step <= a0.t / DT) popped.add(pop.id);
-      s.balloons.forEach((b, id) => {
-        if (b.alive && !popped.has(id)) drawBalloon(ctx, b.x, b.y + Math.sin(this.time * 1.3 + id * 1.7) * 0.04, b.r, BALLOON_COLORS[b.color % BALLOON_COLORS.length]);
+    // Field targets. Ones this flight already went through vanish (the moving target just keeps going).
+    if (s.targets.length) {
+      const hit = new Set<number>();
+      if (a0 && !a0.impacted) for (const pop of a0.flight.pops) if (pop.step <= a0.t / DT) hit.add(pop.id);
+      s.targets.forEach((t, id) => {
+        if (!t.alive || (hit.has(id) && t.kind !== 'mover')) return;
+        if (t.kind === 'balloon') drawBalloon(ctx, t.x, t.y + Math.sin(this.time * 1.3 + id * 1.7) * 0.04, t.r, BALLOON_COLORS[t.color % BALLOON_COLORS.length]);
+        else if (t.kind === 'board') drawBoard(ctx, t.x, t.y, groundY(s.terrain, t.x), t.r, s.players[t.owner].color);
+        else drawMover(ctx, t.x + this.moverOffset(t), t.x, t.y, t.r, t.range);
       });
     }
 
@@ -690,7 +776,7 @@ export class GameView {
     if (!last) return;
     const key = `${s.seed}:${s.round}:${s.seq}:${p}`;
     if (!this.ghost || this.ghost.key !== key) {
-      this.ghost = { key, path: flightFor(s, p, last.vx, last.vy, last.wind).path };
+      this.ghost = { key, path: flightFor(s, p, last.vx, last.vy, last.wind, last.phase).path };
     }
     const ctx = this.ctx;
     const path = this.ghost.path;
@@ -711,7 +797,7 @@ export class GameView {
     const { ctx, w, h } = this;
     const mode = modeOf(s);
     for (const p of [0, 1]) {
-      if (this.poses[p].fall > 0) continue;
+      if (this.ragdolls[p]) continue;
       const head = this.cam.toScreen(archerX(s, p), archerGround(s, p) + (mode.apple ? 2.1 : 1.95), w, h);
       let top = head.y - 10;
       if (mode.usesHp) {

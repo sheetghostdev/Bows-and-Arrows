@@ -28,6 +28,23 @@ const corner = el('div', { class: 'corner', hidden: true }, iconButton(ICONS.hom
   }), soundBtn);
 document.body.append(corner, el('div', { class: 'rotate-hint' }, '↻ Turn your phone sideways'));
 
+// Full screen (where the browser allows it; iPhones use "Add to Home Screen" instead).
+if (document.fullscreenEnabled) {
+  const fsBtn = iconButton(ICONS.fullscreen, 'Full screen', () => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    else
+      void document.documentElement
+        .requestFullscreen({ navigationUI: 'hide' })
+        .then(() => (screen.orientation as unknown as { lock?: (o: string) => Promise<void> }).lock?.('landscape'))
+        .catch(() => {});
+  });
+  fsBtn.classList.add('fs-btn');
+  document.addEventListener('fullscreenchange', () => {
+    fsBtn.innerHTML = document.fullscreenElement ? ICONS.exitFullscreen : ICONS.fullscreen;
+  });
+  document.body.append(fsBtn);
+}
+
 function stopEverything() {
   local?.dispose();
   local = null;

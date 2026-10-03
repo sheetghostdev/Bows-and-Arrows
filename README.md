@@ -43,6 +43,10 @@ npm run e2e        # with `npm run preview` running: full online matches over We
 npm run typecheck
 ```
 
+## Free link with no server: GitHub Pages (vs bot + same screen)
+
+`npm run build:pages` writes the no-server version into `docs/` (committed). To publish it: on GitHub open the repo → **Settings → Pages** → Source **Deploy from a branch** → pick the branch and the **/docs** folder → Save. A minute later it's live at `https://sheetghostdev.github.io/Bows-and-Arrows/`: anyone can open it, no account. Re-run `npm run build:pages` and push to update it. Online play needs the Cloudflare server below.
+
 ## Put it online (one-time, ~5 minutes, free)
 
 Online play runs on Cloudflare Workers + Durable Objects. The free plan is enough.
